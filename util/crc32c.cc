@@ -18,6 +18,10 @@
 #endif
 #include "util/coding.h"
 
+#ifdef ISAL
+#include <isa-l/crc.h>
+#endif
+
 namespace rocksdb {
 namespace crc32c {
 
@@ -333,6 +337,9 @@ static inline void Fast_CRC32(uint64_t* l, uint8_t const **p) {
 
 template<void (*CRC32)(uint64_t*, uint8_t const**)>
 uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
+#ifdef ISAL
+  return crc32_iscsi((unsigned char *)buf, size, crc);
+#else
   const uint8_t *p = reinterpret_cast<const uint8_t *>(buf);
   const uint8_t *e = p + size;
   uint64_t l = crc ^ 0xffffffffu;
@@ -372,6 +379,7 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
 #undef STEP1
 #undef ALIGN
   return static_cast<uint32_t>(l ^ 0xffffffffu);
+#endif /* ISAL */
 }
 
 // Detect if SS42 or not.
