@@ -20,6 +20,7 @@ echo done.
 
 echo -n Inserting keys and values into database...
 /usr/bin/time perf record ./db_bench --flagfile=./seq_insert_flags.txt &> $RESULTS_DIR/db_bench_insert.txt
+cp seq_insert_flags.txt $RESULTS_DIR
 echo done.
 
 echo -n Generating perf report for insertion phase...
@@ -31,6 +32,7 @@ echo done.
 
 echo -n Overwriting keys and values in database...
 /usr/bin/time perf record ./db_bench --flagfile=./overwrite_flags.txt &> $RESULTS_DIR/db_bench_overwrite.txt
+cp overwrite_flags.txt $RESULTS_DIR
 echo done.
 
 echo -n Generating perf report for overwrite phase...
