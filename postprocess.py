@@ -30,6 +30,7 @@ with open(sys.argv[1] + "/" + sys.argv[2] + ".perf.txt") as f:
 		module_samples[key] += int(fields[1])
 
 for thread in sorted(threads):
+	thread_pct = 0
 	print
 	print("Thread: {:s}".format(thread))
 	print(" Percent      Module")
@@ -37,6 +38,9 @@ for thread in sorted(threads):
 	for key, value in sorted(thread_module_samples.items(), key=operator.itemgetter(1), reverse=True):
 		if key.thread == thread:
 			print("{:8.4f}      {:20s}".format(float(value) * 100 / total_samples, key.module))
+			thread_pct += float(value) * 100 / total_samples
+	print("============================")
+	print("{:8.4f}       Total".format(thread_pct))
 
 print
 print(" Percent      Module               Function")
