@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Increase max number of file descriptors.  This will be inherited
+#  by processes spawned from this script.
+ulimit -n 16384
+
 RESULTS_DIR=`date +%Y%m%d_%H%M%S`
 mkdir $RESULTS_DIR
 
