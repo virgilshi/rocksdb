@@ -23,7 +23,9 @@ sudo chown $USER /mnt/rocksdb
 echo done.
 
 echo -n Inserting keys and values into database...
+cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_insert.txt
 /usr/bin/time perf record ./db_bench --flagfile=./seq_insert_flags.txt &> $RESULTS_DIR/db_bench_insert.txt
+cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_insert.txt
 cp seq_insert_flags.txt $RESULTS_DIR
 echo done.
 
@@ -35,7 +37,9 @@ rm $RESULTS_DIR/insert.perf.data
 echo done.
 
 echo -n Overwriting keys and values in database...
+cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_overwrite.txt
 /usr/bin/time perf record ./db_bench --flagfile=./overwrite_flags.txt &> $RESULTS_DIR/db_bench_overwrite.txt
+cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_overwrite.txt
 cp overwrite_flags.txt $RESULTS_DIR
 echo done.
 

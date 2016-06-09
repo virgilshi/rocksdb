@@ -66,3 +66,28 @@ with open(sys.argv[1] + "/db_bench_" + sys.argv[2] + ".txt") as f:
 			system = float(fields[1].split('s')[0])
 			print("User:   {:8.2f} ({:5.2f}%)".format(user, user * 100 / (user + system)))
 			print("System: {:8.2f} ({:5.2f}%)".format(system, system * 100 / (user + system)))
+
+print
+stat_lines = []
+with open(sys.argv[1] + "/blockdev_stats_" + sys.argv[2] + ".txt") as f:
+	for line in f:
+		stat_lines.append(line.strip())
+start = stat_lines[0].split()
+end = stat_lines[1].split()
+# Documentation on /sys/block/nvme0n1/stat output taken from:
+# https://www.kernel.org/doc/Documentation/block/stat.txt
+#
+# Note: sysfs data always tracks number of sectors in 512-byte chunks,
+#  even if underlying namespace is formatted as 4KB.
+read_io = int(end[0]) - int(start[0])
+read_bytes = (int(end[2]) - int(start[2])) * 512
+write_io = int(end[4]) - int(start[4])
+write_bytes = (int(end[6]) - int(start[6])) * 512
+read_gb = float(read_bytes) / (1024 * 1024 * 1024)
+write_gb = float(write_bytes) / (1024 * 1024 * 1024)
+read_avg = float(read_bytes) / read_io / 1024
+write_avg = float(write_bytes) / write_io / 1024
+print("              I/O     Total   Average")
+print("=====================================")
+print("Read:  {:10d} {:7.2f}GB {:7.2f}KB".format(read_io, read_gb, read_avg))
+print("Write: {:10d} {:7.2f}GB {:7.2f}KB".format(write_io, write_gb, write_avg))
