@@ -45,7 +45,7 @@ for thread in sorted(threads):
 print
 print(" Percent      Module               Function")
 print("=================================================================") 
-for key, value in islice(sorted(function_module_samples.items(), key=operator.itemgetter(1), reverse=True), 50):
+for key, value in islice(sorted(function_module_samples.items(), key=operator.itemgetter(1), reverse=True), 100):
 	print("{:8.4f}      {:20s} {:s}".format(float(value) * 100 / total_samples, key.module, key.function))
 
 print
