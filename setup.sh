@@ -50,3 +50,17 @@ rm $RESULTS_DIR/overwrite.perf.data
 ./postprocess.py $RESULTS_DIR overwrite > $RESULTS_DIR/overwrite_summary.txt
 echo done.
 
+echo -n Reading and overwriting keys and values in database...
+cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_readwrite.txt
+/usr/bin/time perf record ./db_bench --flagfile=./readwrite_flags.txt &> $RESULTS_DIR/db_bench_readwrite.txt
+cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_readwrite.txt
+cp readwrite_flags.txt $RESULTS_DIR
+echo done.
+
+echo -n Generating perf report for read/write phase...
+mv perf.data $RESULTS_DIR/readwrite.perf.data
+sudo perf report -f -n -i $RESULTS_DIR/readwrite.perf.data | sed '/#/d' | sed '/%/!d' | sort -r > $RESULTS_DIR/readwrite.perf.txt
+rm $RESULTS_DIR/readwrite.perf.data
+./postprocess.py $RESULTS_DIR readwrite > $RESULTS_DIR/readwrite_summary.txt
+echo done.
+
