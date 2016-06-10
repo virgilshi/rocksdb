@@ -711,7 +711,12 @@ struct StartThreadState {
 };
 
 static void* StartThreadWrapper(void* arg) {
+  static int tid = 0;
   StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
+  char name_buf[16];
+  snprintf(name_buf, sizeof name_buf, "PosixEnv%d", tid++);
+  name_buf[sizeof name_buf - 1] = '\0';
+  pthread_setname_np(pthread_self(), name_buf);
   state->user_function(state->arg);
   delete state;
   return nullptr;
