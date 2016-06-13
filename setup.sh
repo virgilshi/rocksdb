@@ -51,9 +51,8 @@ cat /sys/block/nvme0n1/stat >> blockdev_stats_insert.txt
 echo done.
 
 echo -n Generating perf report for insertion phase...
-mv perf.data insert.perf.data
-sudo perf report -f -n -i insert.perf.data | sed '/#/d' | sed '/%/!d' | sort -r > insert.perf.txt
-rm insert.perf.data
+sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > insert.perf.txt
+rm perf.data
 ../postprocess.py `pwd` insert > insert_summary.txt
 echo done.
 
@@ -64,9 +63,8 @@ cat /sys/block/nvme0n1/stat >> blockdev_stats_overwrite.txt
 echo done.
 
 echo -n Generating perf report for overwrite phase...
-mv perf.data overwrite.perf.data
-sudo perf report -f -n -i overwrite.perf.data | sed '/#/d' | sed '/%/!d' | sort -r > overwrite.perf.txt
-rm overwrite.perf.data
+sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > overwrite.perf.txt
+rm perf.data
 ../postprocess.py `pwd` overwrite > overwrite_summary.txt
 echo done.
 
@@ -77,9 +75,8 @@ cat /sys/block/nvme0n1/stat >> blockdev_stats_readwrite.txt
 echo done.
 
 echo -n Generating perf report for read/write phase...
-mv perf.data readwrite.perf.data
-sudo perf report -f -n -i readwrite.perf.data | sed '/#/d' | sed '/%/!d' | sort -r > readwrite.perf.txt
-rm readwrite.perf.data
+sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > readwrite.perf.txt
+rm perf.data
 ../postprocess.py `pwd` readwrite > readwrite_summary.txt
 echo done.
 
