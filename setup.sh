@@ -24,11 +24,11 @@ sudo mount /dev/nvme0n1 /mnt/rocksdb
 sudo chown $USER /mnt/rocksdb
 echo done.
 
-cp ../common_flags.txt seq_insert_flags.txt
-echo "--benchmarks=fillseq" >> seq_insert_flags.txt
-echo "--threads=1" >> seq_insert_flags.txt
-echo "--disable_wal=1" >> seq_insert_flags.txt
-echo "--use_existing_db=0" >> seq_insert_flags.txt
+cp ../common_flags.txt insert_flags.txt
+echo "--benchmarks=fillseq" >> insert_flags.txt
+echo "--threads=1" >> insert_flags.txt
+echo "--disable_wal=1" >> insert_flags.txt
+echo "--use_existing_db=0" >> insert_flags.txt
 
 cp ../common_flags.txt overwrite_flags.txt
 echo "--benchmarks=overwrite" >> overwrite_flags.txt
@@ -46,7 +46,7 @@ echo "--use_existing_db=1" >> readwrite_flags.txt
 
 echo -n Inserting keys and values into database...
 cat /sys/block/nvme0n1/stat > blockdev_stats_insert.txt
-/usr/bin/time perf record ../db_bench --flagfile=seq_insert_flags.txt &> db_bench_insert.txt
+/usr/bin/time perf record ../db_bench --flagfile=insert_flags.txt &> db_bench_insert.txt
 cat /sys/block/nvme0n1/stat >> blockdev_stats_insert.txt
 echo done.
 
