@@ -22,11 +22,30 @@ sudo mount /dev/nvme0n1 /mnt/rocksdb
 sudo chown $USER /mnt/rocksdb
 echo done.
 
+cp common_flags.txt $RESULTS_DIR/seq_insert_flags.txt
+echo "--benchmarks=fillseq" >> $RESULTS_DIR/seq_insert_flags.txt
+echo "--threads=1" >> $RESULTS_DIR/seq_insert_flags.txt
+echo "--disable_wal=1" >> $RESULTS_DIR/seq_insert_flags.txt
+echo "--use_existing_db=0" >> $RESULTS_DIR/seq_insert_flags.txt
+
+cp common_flags.txt $RESULTS_DIR/overwrite_flags.txt
+echo "--benchmarks=overwrite" >> $RESULTS_DIR/overwrite_flags.txt
+echo "--threads=1" >> $RESULTS_DIR/overwrite_flags.txt
+echo "--duration=120" >> $RESULTS_DIR/overwrite_flags.txt
+echo "--disable_wal=0" >> $RESULTS_DIR/overwrite_flags.txt
+echo "--use_existing_db=1" >> $RESULTS_DIR/overwrite_flags.txt
+
+cp common_flags.txt $RESULTS_DIR/readwrite_flags.txt
+echo "--benchmarks=readwhilewriting" >> $RESULTS_DIR/readwrite_flags.txt
+echo "--threads=4" >> $RESULTS_DIR/readwrite_flags.txt
+echo "--duration=120" >> $RESULTS_DIR/readwrite_flags.txt
+echo "--disable_wal=0" >> $RESULTS_DIR/readwrite_flags.txt
+echo "--use_existing_db=1" >> $RESULTS_DIR/readwrite_flags.txt
+
 echo -n Inserting keys and values into database...
 cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_insert.txt
-/usr/bin/time perf record ./db_bench --flagfile=./seq_insert_flags.txt &> $RESULTS_DIR/db_bench_insert.txt
+/usr/bin/time perf record ./db_bench --flagfile=$RESULTS_DIR/seq_insert_flags.txt &> $RESULTS_DIR/db_bench_insert.txt
 cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_insert.txt
-cp seq_insert_flags.txt $RESULTS_DIR
 echo done.
 
 echo -n Generating perf report for insertion phase...
@@ -38,9 +57,8 @@ echo done.
 
 echo -n Overwriting keys and values in database...
 cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_overwrite.txt
-/usr/bin/time perf record ./db_bench --flagfile=./overwrite_flags.txt &> $RESULTS_DIR/db_bench_overwrite.txt
+/usr/bin/time perf record ./db_bench --flagfile=$RESULTS_DIR/overwrite_flags.txt &> $RESULTS_DIR/db_bench_overwrite.txt
 cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_overwrite.txt
-cp overwrite_flags.txt $RESULTS_DIR
 echo done.
 
 echo -n Generating perf report for overwrite phase...
@@ -52,9 +70,8 @@ echo done.
 
 echo -n Reading and overwriting keys and values in database...
 cat /sys/block/nvme0n1/stat > $RESULTS_DIR/blockdev_stats_readwrite.txt
-/usr/bin/time perf record ./db_bench --flagfile=./readwrite_flags.txt &> $RESULTS_DIR/db_bench_readwrite.txt
+/usr/bin/time perf record ./db_bench --flagfile=$RESULTS_DIR/readwrite_flags.txt &> $RESULTS_DIR/db_bench_readwrite.txt
 cat /sys/block/nvme0n1/stat >> $RESULTS_DIR/blockdev_stats_readwrite.txt
-cp readwrite_flags.txt $RESULTS_DIR
 echo done.
 
 echo -n Generating perf report for read/write phase...
