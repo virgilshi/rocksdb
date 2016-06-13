@@ -44,39 +44,27 @@ echo "--duration=120" >> readwrite_flags.txt
 echo "--disable_wal=0" >> readwrite_flags.txt
 echo "--use_existing_db=1" >> readwrite_flags.txt
 
-echo -n Inserting keys and values into database...
-cat /sys/block/nvme0n1/stat > blockdev_stats_insert.txt
-/usr/bin/time perf record ../db_bench --flagfile=insert_flags.txt &> db_bench_insert.txt
-cat /sys/block/nvme0n1/stat >> blockdev_stats_insert.txt
-echo done.
+run_step() {
+	if [ -z "$1" ]
+	then
+		echo run_step called with no parameter
+		exit 1
+	fi
 
-echo -n Generating perf report for insertion phase...
-sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > insert.perf.txt
-rm perf.data
-../postprocess.py `pwd` insert > insert_summary.txt
-echo done.
+	echo -n Start $1 test phase...
+	cat /sys/block/nvme0n1/stat > blockdev_stats_$1.txt
+	/usr/bin/time perf record ../db_bench --flagfile=$1_flags.txt &> db_bench_$1.txt
+	cat /sys/block/nvme0n1/stat >> blockdev_stats_$1.txt
+	echo done.
 
-echo -n Overwriting keys and values in database...
-cat /sys/block/nvme0n1/stat > blockdev_stats_overwrite.txt
-/usr/bin/time perf record ../db_bench --flagfile=overwrite_flags.txt &> db_bench_overwrite.txt
-cat /sys/block/nvme0n1/stat >> blockdev_stats_overwrite.txt
-echo done.
+	echo -n Generating perf report for $1 test phase...
+	sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > $1.perf.txt
+	rm perf.data
+	../postprocess.py `pwd` $1 > $1_summary.txt
+	echo done.
+}
 
-echo -n Generating perf report for overwrite phase...
-sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > overwrite.perf.txt
-rm perf.data
-../postprocess.py `pwd` overwrite > overwrite_summary.txt
-echo done.
-
-echo -n Reading and overwriting keys and values in database...
-cat /sys/block/nvme0n1/stat > blockdev_stats_readwrite.txt
-/usr/bin/time perf record ../db_bench --flagfile=readwrite_flags.txt &> db_bench_readwrite.txt
-cat /sys/block/nvme0n1/stat >> blockdev_stats_readwrite.txt
-echo done.
-
-echo -n Generating perf report for read/write phase...
-sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > readwrite.perf.txt
-rm perf.data
-../postprocess.py `pwd` readwrite > readwrite_summary.txt
-echo done.
+run_step insert
+run_step overwrite
+run_step readwrite
 
