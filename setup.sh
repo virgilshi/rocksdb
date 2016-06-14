@@ -4,6 +4,7 @@ set -e
 hash mkfs.xfs
 hash perf
 hash python
+[ -e /usr/include/gflags/gflags.h ] || (echo "gflags not installed." && exit 1)
 
 # Increase max number of file descriptors.  This will be inherited
 #  by processes spawned from this script.
