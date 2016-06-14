@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+hash mkfs.xfs
+hash perf
+hash python
+
 # Increase max number of file descriptors.  This will be inherited
 #  by processes spawned from this script.
 ulimit -n 16384
