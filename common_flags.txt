@@ -27,7 +27,6 @@
 --level0_stop_writes_trigger=12
 --num_levels=10
 --delete_obsolete_files_period_micros=3000000
---min_level_to_compress=12
 --max_grandparent_overlap_factor=10
 --stats_per_interval=1
 --max_bytes_for_level_base=10485760
