@@ -22,7 +22,7 @@ cd $RESULTS_DIR
 
 echo -n Creating and mounting XFS filesystem...
 sudo mkdir -p /mnt/rocksdb
-sudo umount /mnt/rocksdb || true
+sudo umount /mnt/rocksdb || true &> /dev/null
 sudo mkfs.xfs -d agcount=32 -l su=4096 -f /dev/nvme0n1 &> mkfs_xfs.txt
 sudo mount /dev/nvme0n1 /mnt/rocksdb
 sudo chown $USER /mnt/rocksdb
