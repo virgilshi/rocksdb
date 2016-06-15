@@ -10,6 +10,7 @@ hash python
 #  by processes spawned from this script.
 ulimit -n 16384
 
+INITIAL_DIR=$PWD
 RESULTS_DIR=`date +%Y%m%d_%H%M%S`
 mkdir $RESULTS_DIR
 
@@ -29,20 +30,20 @@ sudo mount /dev/nvme0n1 /mnt/rocksdb
 sudo chown $USER /mnt/rocksdb
 echo done.
 
-cp ../common_flags.txt insert_flags.txt
+cp $INITIAL_DIR/common_flags.txt insert_flags.txt
 echo "--benchmarks=fillseq" >> insert_flags.txt
 echo "--threads=1" >> insert_flags.txt
 echo "--disable_wal=1" >> insert_flags.txt
 echo "--use_existing_db=0" >> insert_flags.txt
 
-cp ../common_flags.txt overwrite_flags.txt
+cp $INITIAL_DIR/common_flags.txt overwrite_flags.txt
 echo "--benchmarks=overwrite" >> overwrite_flags.txt
 echo "--threads=1" >> overwrite_flags.txt
 echo "--duration=120" >> overwrite_flags.txt
 echo "--disable_wal=0" >> overwrite_flags.txt
 echo "--use_existing_db=1" >> overwrite_flags.txt
 
-cp ../common_flags.txt readwrite_flags.txt
+cp $INITIAL_DIR/common_flags.txt readwrite_flags.txt
 echo "--benchmarks=readwhilewriting" >> readwrite_flags.txt
 echo "--threads=4" >> readwrite_flags.txt
 echo "--duration=120" >> readwrite_flags.txt
@@ -58,14 +59,14 @@ run_step() {
 
 	echo -n Start $1 test phase...
 	cat /sys/block/nvme0n1/stat > blockdev_stats_$1.txt
-	/usr/bin/time perf record ../db_bench --flagfile=$1_flags.txt &> db_bench_$1.txt
+	/usr/bin/time perf record $INITIAL_DIR/db_bench --flagfile=$1_flags.txt &> db_bench_$1.txt
 	cat /sys/block/nvme0n1/stat >> blockdev_stats_$1.txt
 	echo done.
 
 	echo -n Generating perf report for $1 test phase...
 	sudo perf report -f -n | sed '/#/d' | sed '/%/!d' | sort -r > $1.perf.txt
 	rm perf.data
-	../postprocess.py `pwd` $1 > $1_summary.txt
+	$INITIAL_DIR/postprocess.py `pwd` $1 > $1_summary.txt
 	echo done.
 }
 
