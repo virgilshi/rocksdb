@@ -11,7 +11,11 @@ hash python
 ulimit -n 16384
 
 INITIAL_DIR=$PWD
-RESULTS_DIR=`date +%Y%m%d_%H%M%S`
+mkdir -p results/old
+# if there are any existing test results, move them into the "old" directory
+ls results/testrun_* &> /dev/null && mv results/testrun_* results/old
+
+RESULTS_DIR=$INITIAL_DIR/results/testrun_`date +%Y%m%d_%H%M%S`
 mkdir $RESULTS_DIR
 
 [ -e /dev/nvme0n1 ] || (echo "No /dev/nvme0n1 device node found." && exit 1)
