@@ -26,6 +26,22 @@ echo done.
 
 cd $RESULTS_DIR
 
+SYSINFO_FILE=$RESULTS_DIR/sysinfo.txt
+COMMAND="hostname"
+echo ">> $COMMAND : " >> $SYSINFO_FILE
+$COMMAND >> $SYSINFO_FILE
+echo >> $SYSINFO_FILE
+
+COMMAND="cat /proc/cpuinfo"
+echo ">> $COMMAND : " >> $SYSINFO_FILE
+$COMMAND >> $SYSINFO_FILE
+echo >> $SYSINFO_FILE
+
+COMMAND="cat /proc/meminfo"
+echo ">> $COMMAND : " >> $SYSINFO_FILE
+$COMMAND >> $SYSINFO_FILE
+echo >> $SYSINFO_FILE
+
 echo -n Creating and mounting XFS filesystem...
 sudo mkdir -p /mnt/rocksdb
 sudo umount /mnt/rocksdb || true &> /dev/null
