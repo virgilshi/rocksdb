@@ -56,7 +56,7 @@ for key, value in sorted(module_samples.items(), key=operator.itemgetter(1), rev
 	print("{:8.4f}      {:s}".format(float(value) * 100 / total_samples, key))
 
 print
-with open(sys.argv[1] + "/db_bench_" + sys.argv[2] + ".txt") as f:
+with open(sys.argv[1] + "/" + sys.argv[2] + "_db_bench.txt") as f:
 	for line in f:
 		if "maxresident" in line:
 			fields = line.split()
@@ -69,7 +69,7 @@ with open(sys.argv[1] + "/db_bench_" + sys.argv[2] + ".txt") as f:
 
 print
 stat_lines = []
-with open(sys.argv[1] + "/blockdev_stats_" + sys.argv[2] + ".txt") as f:
+with open(sys.argv[1] + "/" + sys.argv[2] + "_blockdev_stats.txt") as f:
 	for line in f:
 		stat_lines.append(line.strip())
 start = stat_lines[0].split()

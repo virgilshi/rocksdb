@@ -78,9 +78,9 @@ run_step() {
 	fi
 
 	echo -n Start $1 test phase...
-	cat /sys/block/nvme0n1/stat > blockdev_stats_$1.txt
-	/usr/bin/time perf record $INITIAL_DIR/db_bench --flagfile=$1_flags.txt &> db_bench_$1.txt
-	cat /sys/block/nvme0n1/stat >> blockdev_stats_$1.txt
+	cat /sys/block/nvme0n1/stat > "$1"_blockdev_stats.txt
+	/usr/bin/time perf record $INITIAL_DIR/db_bench --flagfile="$1"_flags.txt &> "$1"_db_bench.txt
+	cat /sys/block/nvme0n1/stat >> "$1"_blockdev_stats.txt
 	echo done.
 
 	echo -n Generating perf report for $1 test phase...
