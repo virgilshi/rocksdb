@@ -77,9 +77,14 @@ run_step() {
 		exit 1
 	fi
 
+	if [ -e /opt/intel/bin64/emon ] && [ -e /dev/sepint4_0 ]
+	then
+		EMON="/opt/intel/bin64/emon `cat $INITIAL_DIR/emon_opts.txt` -f $1_emon.txt "
+	fi
+
 	echo -n Start $1 test phase...
 	cat /sys/block/nvme0n1/stat > "$1"_blockdev_stats.txt
-	/usr/bin/time perf record $INITIAL_DIR/db_bench --flagfile="$1"_flags.txt &> "$1"_db_bench.txt
+	$EMON /usr/bin/time perf record $INITIAL_DIR/db_bench --flagfile="$1"_flags.txt &> "$1"_db_bench.txt
 	cat /sys/block/nvme0n1/stat >> "$1"_blockdev_stats.txt
 	echo done.
 
