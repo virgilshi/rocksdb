@@ -604,6 +604,8 @@ static bool ValidateTableCacheNumshardbits(const char* flagname,
 }
 DEFINE_int32(table_cache_numshardbits, 4, "");
 
+DEFINE_string(spdk, "", "Name of SPDK configuration file");
+
 DEFINE_string(hdfs, "", "Name of hdfs environment");
 // posix or hdfs environment
 static rocksdb::Env* FLAGS_env = rocksdb::Env::Default();
@@ -4015,6 +4017,10 @@ int db_bench_tool(int argc, char** argv) {
 
   FLAGS_rep_factory = StringToRepFactory(FLAGS_memtablerep.c_str());
 
+  if (!FLAGS_spdk.empty()) {
+    NewSpdkEnv(&FLAGS_env, FLAGS_db, FLAGS_spdk);
+  }
+
   // The number of background threads should be at least as much the
   // max number of concurrent compactions.
   FLAGS_env->SetBackgroundThreads(FLAGS_max_background_compactions);
@@ -4035,8 +4041,15 @@ int db_bench_tool(int argc, char** argv) {
     FLAGS_stats_interval = 1000;
   }
 
-  rocksdb::Benchmark benchmark;
-  benchmark.Run();
+  // Allocate the Benchmark off the heap, so that we can explicitly delete it
+  //  before the SpdkEnv is deleted.
+  rocksdb::Benchmark *benchmark = new rocksdb::Benchmark;;
+  benchmark->Run();
+  delete benchmark;
+
+  if (!FLAGS_spdk.empty()) {
+    delete FLAGS_env;
+  }
   return 0;
 }
 }  // namespace rocksdb

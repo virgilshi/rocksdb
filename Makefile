@@ -130,7 +130,25 @@ am__v_AR_ = $(am__v_AR_$(AM_DEFAULT_VERBOSITY))
 am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 =
 
-AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS)
+DPDK_DIR ?= ../dpdk/x86_64-native-linuxapp-gcc
+SPDK_DIR ?= ../spdk
+SPDK_ROOT_DIR := $(abspath $(SPDK_DIR))
+include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.app.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.modules.mk
+# The SPDK makefiles turn this on, but RocksDB won't compile with it.  So
+#  turn it off after including the SPDK makefiles.
+CXXFLAGS += -Wno-missing-declarations
+
+SPDK_LIB_LIST = bdev copy event conf trace log file blob blob_bdev \
+		util jsonrpc json rpc
+
+AM_LINK += $(AM_V_CCLD)$(CXX)
+AM_LINK += $(BLOCKDEV_MODULES_LINKER_ARGS)
+AM_LINK += $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) -ldl
+AM_LINK += $(SPDK_LIB_LINKER_ARGS)
+AM_LINK += $(ENV_LINKER_ARGS)
+CFLAGS += -march=native -m64 -fno-permissive
 
 ifeq ($(ISAL),y)
 AM_LINK += -lisal
@@ -213,7 +231,7 @@ ifndef DISABLE_WARNING_AS_ERROR
 endif
 
 CFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
-CXXFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
+CXXFLAGS += $(WARNING_FLAGS) -I. -I./include -I$(DPDK_DIR)/include -I$(SPDK_DIR)/include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 
@@ -802,7 +820,7 @@ $(LIBRARY): $(LIBOBJECTS)
 	$(AM_V_AR)rm -f $@
 	$(AM_V_at)$(AR) $(ARFLAGS) $@ $(LIBOBJECTS)
 
-db_bench: tools/db_bench.o $(BENCHTOOLOBJECTS)
+db_bench: tools/db_bench.o $(BENCHTOOLOBJECTS) $(SPDK_LIB_FILES)
 	$(AM_LINK)
 
 cache_bench: util/cache_bench.o $(LIBOBJECTS) $(TESTUTIL)

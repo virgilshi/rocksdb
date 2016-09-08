@@ -240,6 +240,7 @@ static void* BGThreadWrapper(void* arg) {
   BGThreadMetadata* meta = reinterpret_cast<BGThreadMetadata*>(arg);
   size_t thread_id = meta->thread_id_;
   ThreadPool* tp = meta->thread_pool_;
+  SpdkInitializeThread();
 #if ROCKSDB_USING_THREAD_STATUS
   // for thread-status
   ThreadStatusUtil::RegisterThread(

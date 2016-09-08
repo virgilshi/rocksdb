@@ -979,6 +979,12 @@ Env* NewMemEnv(Env* base_env);
 // This is a factory method for HdfsEnv declared in hdfs/env_hdfs.h
 Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
+// Returns a new environment that is used for SPDK environment.
+void NewSpdkEnv(Env** spdk_env, const std::string& fsname, const std::string& confname);
+
+// Initializes a thread for SpdkEnv processing.
+void SpdkInitializeThread(void);
+
 }  // namespace rocksdb
 
 #endif  // STORAGE_ROCKSDB_INCLUDE_ENV_H_

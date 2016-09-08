@@ -100,7 +100,7 @@ LIB_SOURCES =                                                   \
   util/env.cc                                                   \
   util/env_chroot.cc                                            \
   util/env_hdfs.cc                                              \
-  util/env_posix.cc                                             \
+  util/env_spdk.cc                                              \
   util/io_posix.cc                                              \
   util/threadpool.cc                                            \
   util/transaction_test_util.cc                                 \
