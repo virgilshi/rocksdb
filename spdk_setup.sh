@@ -23,6 +23,8 @@ ln -s $RESULTS_DIR $INITIAL_DIR/results/last
 if [ "$NO_SPDK" = "1" ]
 then
 	[ -e /dev/nvme0n1 ] || (echo "No /dev/nvme0n1 device node found." && exit 1)
+else
+	[ -e /dev/nvme0n1 ] && (echo "/dev/nvme0n1 device found - need to run SPDK setup.sh script to bind to UIO." && exit 1)
 fi
 
 echo -n Building RocksDB...
