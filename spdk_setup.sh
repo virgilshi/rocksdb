@@ -66,6 +66,13 @@ echo "--threads=1" >> insert_flags.txt
 echo "--disable_wal=1" >> insert_flags.txt
 echo "--use_existing_db=0" >> insert_flags.txt
 
+cp $INITIAL_DIR/common_flags.txt randread_flags.txt
+echo "--benchmarks=readrandom" >> randread_flags.txt
+echo "--threads=16" >> randread_flags.txt
+echo "--duration=120" >> randread_flags.txt
+echo "--disable_wal=1" >> randread_flags.txt
+echo "--use_existing_db=1" >> randread_flags.txt
+
 cp $INITIAL_DIR/common_flags.txt overwrite_flags.txt
 echo "--benchmarks=overwrite" >> overwrite_flags.txt
 echo "--threads=1" >> overwrite_flags.txt
@@ -114,6 +121,7 @@ run_step() {
 }
 
 run_step insert
+run_step randread
 run_step overwrite
 run_step readwrite
 
