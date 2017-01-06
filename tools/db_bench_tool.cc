@@ -605,6 +605,7 @@ static bool ValidateTableCacheNumshardbits(const char* flagname,
 DEFINE_int32(table_cache_numshardbits, 4, "");
 
 DEFINE_string(spdk, "", "Name of SPDK configuration file");
+DEFINE_uint64(spdk_cache_size, 4096, "Size of SPDK filesystem cache (in MB)");
 
 DEFINE_string(hdfs, "", "Name of hdfs environment");
 // posix or hdfs environment
@@ -4018,7 +4019,7 @@ int db_bench_tool(int argc, char** argv) {
   FLAGS_rep_factory = StringToRepFactory(FLAGS_memtablerep.c_str());
 
   if (!FLAGS_spdk.empty()) {
-    NewSpdkEnv(&FLAGS_env, FLAGS_db, FLAGS_spdk);
+    NewSpdkEnv(&FLAGS_env, FLAGS_db, FLAGS_spdk, FLAGS_spdk_cache_size);
   }
 
   // The number of background threads should be at least as much the

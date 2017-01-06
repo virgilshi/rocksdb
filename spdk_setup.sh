@@ -20,6 +20,8 @@ mkdir $RESULTS_DIR
 rm -f $INITIAL_DIR/results/last
 ln -s $RESULTS_DIR $INITIAL_DIR/results/last
 
+: ${CACHE_SIZE:=4096}
+
 if [ "$NO_SPDK" = "1" ]
 then
 	[ -e /dev/nvme0n1 ] || (echo "No /dev/nvme0n1 device node found." && exit 1)
@@ -97,6 +99,7 @@ run_step() {
 	if [ -z "$NO_SPDK" ]
 	then
 	  echo "--spdk=/usr/local/etc/spdk/rocksdb.conf" >> "$1"_flags.txt
+	  echo "--spdk_cache_size=$CACHE_SIZE" >> "$1"_flags.txt
 	fi
 
 	if [ "$NO_SPDK" = "1" ]

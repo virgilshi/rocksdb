@@ -464,7 +464,7 @@ private:
 	std::string mConfig;
 
 public:
-	SpdkEnv(const std::string &dir, const std::string &conf);
+	SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache_size_in_mb);
 
 	virtual ~SpdkEnv();
 
@@ -674,7 +674,7 @@ initialize_spdk(void *arg)
 	pthread_exit(NULL);
 }
 
-SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf)
+SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache_size_in_mb)
     : PosixEnv(), mDirectory(dir), mConfig(conf) {
 	struct spdk_app_opts *opts = new struct spdk_app_opts;
 
@@ -682,7 +682,7 @@ SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf)
 	opts->name = "rocksdb";
 	opts->config_file = mConfig.c_str();
 	opts->reactor_mask = "0x1";
-	opts->dpdk_mem_size = 8192;
+	opts->dpdk_mem_size = 4096 + cache_size_in_mb;
 	opts->shutdown_cb = spdk_rocksdb_shutdown;
 
 	pthread_create(&mSpdkTid, NULL, &initialize_spdk, opts);
@@ -691,6 +691,7 @@ SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf)
 
 	pthread_mutex_init(&g_sync_args.mutex, NULL);
 	pthread_cond_init(&g_sync_args.cond, NULL);
+	spdk_file_cache_set_size(cache_size_in_mb);
 }
 
 SpdkEnv::~SpdkEnv() {
@@ -698,8 +699,8 @@ SpdkEnv::~SpdkEnv() {
 	pthread_join(mSpdkTid, NULL);
 }
 
-void NewSpdkEnv(Env **env, const std::string& dir, const std::string &conf) {
-	*env = new SpdkEnv(dir, conf);
+void NewSpdkEnv(Env **env, const std::string& dir, const std::string &conf, uint64_t cache_size_in_mb) {
+	*env = new SpdkEnv(dir, conf, cache_size_in_mb);
 }
 
 } // namespace rocksdb
