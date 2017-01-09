@@ -78,7 +78,6 @@ __send_request(file_cache_request_fn fn, struct spdk_file_cache_args *args)
 }
 
 class SpdkSequentialFile : public SequentialFile {
-	struct spdk_file *mFile;
 	struct spdk_file_cache *mFileCache;
 	uint64_t mOffset;
 	uint64_t mSize;
@@ -208,23 +207,6 @@ __close(void *arg1, void *arg2)
 }
 
 static void
-__rw_done(void *ctx, int fserrno)
-{
-	struct sync_args *args = (struct sync_args *)ctx;
-
-	assert(fserrno == 0);
-	wake_rocksdb_thread(args);
-}
-
-static void
-__read(void *arg1, void *arg2)
-{
-	struct sync_args *args = (struct sync_args *)arg1;
-
-	spdk_file_read(args->file, g_channel, args->buf, args->offset, args->len, __rw_done, args);
-}
-
-static void
 __get_children(void *arg1, void *arg2)
 {
 	struct sync_args *args = (struct sync_args *)arg1;
@@ -247,54 +229,23 @@ basename(std::string full)
 }
 
 SpdkSequentialFile::SpdkSequentialFile(const std::string &fname, const EnvOptions& options) : mOffset(0) {
-	mFileCache = spdk_file_cache_open_read(g_fs, fname.c_str());
-	if (mFileCache != NULL) {
-		return;
-	}
-	g_sync_args.new_name = fname.c_str();
-	g_sync_args.open_flags = 0;
-	send_fs_event(__open_file, &g_sync_args);
-	mFile = g_sync_args.file;
-	mSize = g_sync_args.size;
-	mName = strdup(fname.c_str());
+	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(), __send_request,
+					  &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 SpdkSequentialFile::~SpdkSequentialFile(void) {
-	if (mFileCache != NULL) {
-		spdk_file_cache_close_read(mFileCache);
-		return;
-	}
-	g_sync_args.file = mFile;
-	send_fs_event(__close, &g_sync_args);
-	free(mName);
+	spdk_file_cache_close(mFileCache, &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 Status
 SpdkSequentialFile::Read(size_t n, Slice *result, char *scratch) {
 	uint64_t ret;
 
-	if (mFileCache != NULL) {
-		ret = spdk_file_cache_read(mFileCache, scratch, mOffset, n,
-					   &g_sync_args.mutex, &g_sync_args.cond,
-					   g_channel);
-		mOffset += ret;
-		*result = Slice(scratch, ret);
-		return Status::OK();
-	}
-	if (mOffset + n > mSize) {
-		n = mSize - mOffset;
-	}
-	if (n == 0) {
-		*result = Slice(scratch, 0);
-		return Status::OK();
-	}
-	g_sync_args.file = mFile;
-	g_sync_args.buf = scratch;
-	g_sync_args.offset = mOffset;
-	g_sync_args.len = n;
-	send_fs_event(__read, &g_sync_args);
-	mOffset += n;
-	*result = Slice(scratch, n);
+	ret = spdk_file_cache_read(mFileCache, scratch, mOffset, n,
+				   &g_sync_args.mutex, &g_sync_args.cond,
+				   g_channel);
+	mOffset += ret;
+	*result = Slice(scratch, ret);
 	return Status::OK();
 }
 
@@ -311,7 +262,6 @@ SpdkSequentialFile::InvalidateCache(size_t offset, size_t length) {
 }
 
 class SpdkRandomAccessFile : public RandomAccessFile {
-	struct spdk_file *mFile;
 	struct spdk_file_cache *mFileCache;
 public:
 	SpdkRandomAccessFile(const std::string& fname, const EnvOptions& options);
@@ -322,39 +272,19 @@ public:
 };
 
 SpdkRandomAccessFile::SpdkRandomAccessFile(const std::string &fname, const EnvOptions& options) {
-	mFileCache = spdk_file_cache_open_read(g_fs, fname.c_str());
-	if (mFileCache != NULL) {
-		return;
-	}
-	g_sync_args.new_name = fname.c_str();
-	g_sync_args.open_flags = 0;
-	send_fs_event(__open_file, &g_sync_args);
-	mFile = g_sync_args.file;
+	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(), __send_request,
+					  &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 SpdkRandomAccessFile::~SpdkRandomAccessFile(void) {
-	if (mFileCache != NULL) {
-		spdk_file_cache_close_read(mFileCache);
-		return;
-	}
-	g_sync_args.file = mFile;
-	send_fs_event(__close, &g_sync_args);
+	spdk_file_cache_close(mFileCache, &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 Status
 SpdkRandomAccessFile::Read(uint64_t offset, size_t n, Slice *result, char *scratch) const {
-	if (mFileCache != NULL) {
-		spdk_file_cache_read(mFileCache, scratch, offset, n,
-				     &g_sync_args.mutex, &g_sync_args.cond,
-				     g_channel);
-		*result = Slice(scratch, n);
-		return Status::OK();
-	}
-	g_sync_args.file = mFile;
-	g_sync_args.buf = scratch;
-	g_sync_args.offset = offset;
-	g_sync_args.len = n;
-	send_fs_event(__read, &g_sync_args);
+	spdk_file_cache_read(mFileCache, scratch, offset, n,
+			     &g_sync_args.mutex, &g_sync_args.cond,
+			     g_channel);
 	*result = Slice(scratch, n);
 	return Status::OK();
 }
