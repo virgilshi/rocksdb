@@ -685,13 +685,14 @@ SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache
 	opts->dpdk_mem_size = 4096 + cache_size_in_mb;
 	opts->shutdown_cb = spdk_rocksdb_shutdown;
 
+	spdk_file_cache_set_size(cache_size_in_mb);
+
 	pthread_create(&mSpdkTid, NULL, &initialize_spdk, opts);
 	while (!g_spdk_ready)
 		;
 
 	pthread_mutex_init(&g_sync_args.mutex, NULL);
 	pthread_cond_init(&g_sync_args.cond, NULL);
-	spdk_file_cache_set_size(cache_size_in_mb);
 }
 
 SpdkEnv::~SpdkEnv() {
