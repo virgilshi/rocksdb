@@ -47,10 +47,10 @@ wake_rocksdb_thread(struct sync_args *args)
 static void
 send_fs_event(spdk_event_fn fn, struct sync_args *args)
 {
-	spdk_event_t event;
+	struct spdk_event *event;
 
 	args->rc = 0;
-	event = spdk_event_allocate(0, fn, args, NULL, NULL);
+	event = spdk_event_allocate(0, fn, args, NULL);
 	pthread_mutex_lock(&args->mutex);
 	spdk_event_call(event);
 	pthread_cond_wait(&args->cond, &args->mutex);
@@ -58,22 +58,22 @@ send_fs_event(spdk_event_fn fn, struct sync_args *args)
 }
 
 static void
-__call_fn(spdk_event_t event)
+__call_fn(void *arg1, void *arg2)
 {
 	file_cache_request_fn fn;
 	struct spdk_file_cache_args *args;
 
-	fn = (file_cache_request_fn)spdk_event_get_arg1(event);
-	args = (struct spdk_file_cache_args *)spdk_event_get_arg2(event);
+	fn = (file_cache_request_fn)arg1;
+	args = (struct spdk_file_cache_args *)arg2;
 	fn(args);
 }
 
 static void
 __send_request(file_cache_request_fn fn, struct spdk_file_cache_args *args)
 {
-	spdk_event_t event;
+	struct spdk_event *event;
 
-	event = spdk_event_allocate(0, __call_fn, (void *)fn, args, NULL);
+	event = spdk_event_allocate(0, __call_fn, (void *)fn, args);
 	spdk_event_call(event);
 }
 
@@ -105,9 +105,9 @@ __open_file_cb(void *arg, struct spdk_file *f, int fserrno)
 }
 
 static void
-__open_file(spdk_event_t event)
+__open_file(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_fs_md_open_file(g_fs, args->new_name, args->open_flags, __open_file_cb, args);
 }
@@ -125,9 +125,9 @@ __delete_file_cb(void *arg, int fserrno)
 }
 
 static void
-__delete_file(spdk_event_t event)
+__delete_file(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_fs_md_delete_file(g_fs, args->new_name, __delete_file_cb, args);
 }
@@ -142,17 +142,17 @@ __rename_file_cb(void *arg, int fserrno)
 }
 
 static void
-__rename_file(spdk_event_t event)
+__rename_file(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_fs_md_rename_file(g_fs, args->old_name, args->new_name, __rename_file_cb, args);
 }
 
 static void
-__get_file(spdk_event_t event)
+__get_file(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 	struct spdk_file *file;
 	spdk_fs_iter iter;
 
@@ -183,9 +183,9 @@ __truncate_cb(void *ctx, int fserrno)
 }
 
 static void
-__truncate(spdk_event_t event)
+__truncate(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_file_md_truncate(args->file, args->size, __truncate_cb, args);
 }
@@ -200,9 +200,9 @@ __close_cb(void *ctx, int fserrno)
 }
 
 static void
-__close(spdk_event_t event)
+__close(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_file_md_close(args->file, __close_cb, args);
 }
@@ -217,17 +217,17 @@ __rw_done(void *ctx, int fserrno)
 }
 
 static void
-__read(spdk_event_t event)
+__read(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 
 	spdk_file_read(args->file, g_channel, args->buf, args->offset, args->len, __rw_done, args);
 }
 
 static void
-__get_children(spdk_event_t event)
+__get_children(void *arg1, void *arg2)
 {
-	struct sync_args *args = (struct sync_args *)spdk_event_get_arg1(event);
+	struct sync_args *args = (struct sync_args *)arg1;
 	spdk_fs_iter iter;
 	struct spdk_file *file;
 
@@ -624,7 +624,7 @@ fs_init_cb(void *ctx, struct spdk_filesystem *fs, int fserrno)
 }
 
 static void
-spdk_rocksdb_run(spdk_event_t event)
+spdk_rocksdb_run(void *arg1, void *arg2)
 {
 	struct spdk_bdev *bdev;
 
