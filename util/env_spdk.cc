@@ -473,6 +473,9 @@ public:
 		}
 		return Status::OK();
 	}
+	virtual Status LinkFile(const std::string& src, const std::string& target) override {
+		return Status::NotSupported("SpdkEnv does not support LinkFile");
+	}
 	virtual Status GetFileSize(const std::string& fname, uint64_t* size) override {
 		std::string fname_base = basename(fname);
 		g_sync_args.new_name = fname_base.c_str();
