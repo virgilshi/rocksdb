@@ -60,20 +60,18 @@ send_fs_event(spdk_event_fn fn, struct sync_args *args)
 static void
 __call_fn(void *arg1, void *arg2)
 {
-	file_cache_request_fn fn;
-	struct spdk_file_cache_args *args;
+	fs_request_fn fn;
 
-	fn = (file_cache_request_fn)arg1;
-	args = (struct spdk_file_cache_args *)arg2;
-	fn(args);
+	fn = (fs_request_fn)arg1;
+	fn(arg2);
 }
 
 static void
-__send_request(file_cache_request_fn fn, struct spdk_file_cache_args *args)
+__send_request(fs_request_fn fn, void *arg)
 {
 	struct spdk_event *event;
 
-	event = spdk_event_allocate(0, __call_fn, (void *)fn, args);
+	event = spdk_event_allocate(0, __call_fn, (void *)fn, arg);
 	spdk_event_call(event);
 }
 
@@ -229,7 +227,7 @@ basename(std::string full)
 }
 
 SpdkSequentialFile::SpdkSequentialFile(const std::string &fname, const EnvOptions& options) : mOffset(0) {
-	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(), __send_request,
+	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(),
 					  &g_sync_args.mutex, &g_sync_args.cond);
 }
 
@@ -272,7 +270,7 @@ public:
 };
 
 SpdkRandomAccessFile::SpdkRandomAccessFile(const std::string &fname, const EnvOptions& options) {
-	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(), __send_request,
+	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(),
 					  &g_sync_args.mutex, &g_sync_args.cond);
 }
 
@@ -365,7 +363,7 @@ public:
 };
 
 SpdkWritableFile::SpdkWritableFile(const std::string &fname, const EnvOptions& options) : mSize(0) {
-	mFile = spdk_file_cache_open(g_fs, fname.c_str(), __send_request,
+	mFile = spdk_file_cache_open(g_fs, fname.c_str(),
 				     &g_sync_args.mutex, &g_sync_args.cond);
 	mName = strdup(fname.c_str());
 }
@@ -571,7 +569,7 @@ spdk_rocksdb_run(void *arg1, void *arg2)
 
 	g_bs_dev = spdk_bdev_create_bs_dev(bdev);
 	printf("using bdev %s\n", bdev->name);
-	spdk_fs_load(g_bs_dev, fs_init_cb, NULL);
+	spdk_fs_load(g_bs_dev, __send_request, fs_init_cb, NULL);
 }
 
 static void
