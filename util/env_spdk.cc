@@ -23,7 +23,6 @@ struct sync_args {
 	pthread_cond_t cond;
 	int rc;
 	struct spdk_file *file;
-	struct spdk_file_cache *cache;
 	const char *new_name;
 	const char *old_name;
 	uint64_t size;
@@ -76,7 +75,7 @@ __send_request(fs_request_fn fn, void *arg)
 }
 
 class SpdkSequentialFile : public SequentialFile {
-	struct spdk_file_cache *mFileCache;
+	struct spdk_file *mFile;
 	uint64_t mOffset;
 	uint64_t mSize;
 	char *mName;
@@ -201,7 +200,7 @@ __close(void *arg1, void *arg2)
 {
 	struct sync_args *args = (struct sync_args *)arg1;
 
-	spdk_file_md_close(args->file, __close_cb, args);
+	spdk_file_close_async(args->file, __close_cb, args);
 }
 
 static void
@@ -227,19 +226,18 @@ basename(std::string full)
 }
 
 SpdkSequentialFile::SpdkSequentialFile(const std::string &fname, const EnvOptions& options) : mOffset(0) {
-	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(),
-					  &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 SpdkSequentialFile::~SpdkSequentialFile(void) {
-	spdk_file_cache_close(mFileCache, &g_sync_args.mutex, &g_sync_args.cond);
+	spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 Status
 SpdkSequentialFile::Read(size_t n, Slice *result, char *scratch) {
 	uint64_t ret;
 
-	ret = spdk_file_cache_read(mFileCache, scratch, mOffset, n,
+	ret = spdk_file_cache_read(mFile, scratch, mOffset, n,
 				   &g_sync_args.mutex, &g_sync_args.cond,
 				   g_channel);
 	mOffset += ret;
@@ -260,7 +258,7 @@ SpdkSequentialFile::InvalidateCache(size_t offset, size_t length) {
 }
 
 class SpdkRandomAccessFile : public RandomAccessFile {
-	struct spdk_file_cache *mFileCache;
+	struct spdk_file *mFile;
 public:
 	SpdkRandomAccessFile(const std::string& fname, const EnvOptions& options);
 	virtual ~SpdkRandomAccessFile();
@@ -270,18 +268,16 @@ public:
 };
 
 SpdkRandomAccessFile::SpdkRandomAccessFile(const std::string &fname, const EnvOptions& options) {
-	mFileCache = spdk_file_cache_open(g_fs, fname.c_str(),
-					  &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 SpdkRandomAccessFile::~SpdkRandomAccessFile(void) {
-	spdk_file_cache_close(mFileCache, &g_sync_args.mutex, &g_sync_args.cond);
+	spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
 }
 
 Status
 SpdkRandomAccessFile::Read(uint64_t offset, size_t n, Slice *result, char *scratch) const {
-	spdk_file_cache_read(mFileCache, scratch, offset, n,
-			     &g_sync_args.mutex, &g_sync_args.cond,
+	spdk_file_cache_read(mFile, scratch, offset, n, &g_sync_args.mutex, &g_sync_args.cond,
 			     g_channel);
 	*result = Slice(scratch, n);
 	return Status::OK();
@@ -294,7 +290,7 @@ SpdkRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
 }
 
 class SpdkWritableFile : public WritableFile {
-	struct spdk_file_cache *mFile;
+	struct spdk_file *mFile;
 	uint32_t mSize;
 	char *mName;
 
@@ -314,7 +310,7 @@ public:
 	}
 
 	virtual Status Truncate(uint64_t size) override {
-		g_sync_args.file = spdk_file_cache_get_file(mFile);
+		g_sync_args.file = mFile;
 		g_sync_args.size = size;
 		send_fs_event(__truncate, &g_sync_args);
 		mSize = size;
@@ -322,7 +318,7 @@ public:
 	}
 	virtual Status Close() override {
 		spdk_file_cache_sync(mFile, &g_sync_args.mutex, &g_sync_args.cond, g_channel);
-		spdk_file_cache_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
+		spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
 		mFile = NULL;
 		return Status::OK();
 	}
@@ -349,7 +345,7 @@ public:
 	}
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 	virtual Status Allocate(uint64_t offset, uint64_t len) override {
-		g_sync_args.file = spdk_file_cache_get_file(mFile);
+		g_sync_args.file = mFile;
 		g_sync_args.size = offset + len;
 		send_fs_event(__truncate, &g_sync_args);
 		return Status::OK();
@@ -363,8 +359,7 @@ public:
 };
 
 SpdkWritableFile::SpdkWritableFile(const std::string &fname, const EnvOptions& options) : mSize(0) {
-	mFile = spdk_file_cache_open(g_fs, fname.c_str(),
-				     &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
 	mName = strdup(fname.c_str());
 }
 
