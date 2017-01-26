@@ -21,6 +21,8 @@ rm -f $INITIAL_DIR/results/last
 ln -s $RESULTS_DIR $INITIAL_DIR/results/last
 
 : ${CACHE_SIZE:=4096}
+: ${DURATION:=120}
+: ${NUM_KEYS:=500000000}
 
 if [ "$NO_SPDK" = "1" ]
 then
@@ -67,27 +69,31 @@ echo "--benchmarks=fillseq" >> insert_flags.txt
 echo "--threads=1" >> insert_flags.txt
 echo "--disable_wal=1" >> insert_flags.txt
 echo "--use_existing_db=0" >> insert_flags.txt
+echo "--num=$NUM_KEYS" >> insert_flags.txt
 
 cp $INITIAL_DIR/common_flags.txt randread_flags.txt
 echo "--benchmarks=readrandom" >> randread_flags.txt
 echo "--threads=16" >> randread_flags.txt
-echo "--duration=120" >> randread_flags.txt
+echo "--duration=$DURATION" >> randread_flags.txt
 echo "--disable_wal=1" >> randread_flags.txt
 echo "--use_existing_db=1" >> randread_flags.txt
+echo "--num=$NUM_KEYS" >> randread_flags.txt
 
 cp $INITIAL_DIR/common_flags.txt overwrite_flags.txt
 echo "--benchmarks=overwrite" >> overwrite_flags.txt
 echo "--threads=1" >> overwrite_flags.txt
-echo "--duration=120" >> overwrite_flags.txt
+echo "--duration=$DURATION" >> overwrite_flags.txt
 echo "--disable_wal=1" >> overwrite_flags.txt
 echo "--use_existing_db=1" >> overwrite_flags.txt
+echo "--num=$NUM_KEYS" >> overwrite_flags.txt
 
 cp $INITIAL_DIR/common_flags.txt readwrite_flags.txt
 echo "--benchmarks=readwhilewriting" >> readwrite_flags.txt
 echo "--threads=4" >> readwrite_flags.txt
-echo "--duration=120" >> readwrite_flags.txt
+echo "--duration=$DURATION" >> readwrite_flags.txt
 echo "--disable_wal=1" >> readwrite_flags.txt
 echo "--use_existing_db=1" >> readwrite_flags.txt
+echo "--num=$NUM_KEYS" >> readwrite_flags.txt
 
 run_step() {
 	if [ -z "$1" ]
