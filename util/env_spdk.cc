@@ -15,12 +15,10 @@ extern "C" {
 namespace rocksdb {
 
 struct spdk_filesystem *g_fs;
-struct spdk_io_channel *g_channel;
 struct spdk_bs_dev *g_bs_dev;
 volatile bool g_spdk_ready = false;
 struct sync_args {
-	pthread_mutex_t mutex;
-	pthread_cond_t cond;
+	sem_t sem;
 	int rc;
 	struct spdk_file *file;
 	const char *new_name;
@@ -38,9 +36,7 @@ __thread struct sync_args g_sync_args;
 static void
 wake_rocksdb_thread(struct sync_args *args)
 {
-	pthread_mutex_lock(&args->mutex);
-	pthread_cond_signal(&args->cond);
-	pthread_mutex_unlock(&args->mutex);
+	sem_post(&args->sem);
 }
 
 static void
@@ -50,10 +46,8 @@ send_fs_event(spdk_event_fn fn, struct sync_args *args)
 
 	args->rc = 0;
 	event = spdk_event_allocate(0, fn, args, NULL);
-	pthread_mutex_lock(&args->mutex);
 	spdk_event_call(event);
-	pthread_cond_wait(&args->cond, &args->mutex);
-	pthread_mutex_unlock(&args->mutex);
+	sem_wait(&args->sem);
 }
 
 static void
@@ -105,7 +99,7 @@ __open_file(void *arg1, void *arg2)
 {
 	struct sync_args *args = (struct sync_args *)arg1;
 
-	spdk_fs_md_open_file(g_fs, args->new_name, args->open_flags, __open_file_cb, args);
+	spdk_fs_open_file_async(g_fs, args->new_name, args->open_flags, __open_file_cb, args);
 }
 
 static void
@@ -226,20 +220,18 @@ basename(std::string full)
 }
 
 SpdkSequentialFile::SpdkSequentialFile(const std::string &fname, const EnvOptions& options) : mOffset(0) {
-	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_fs_open_file(g_fs, fname.c_str(), 0, &g_sync_args.sem);
 }
 
 SpdkSequentialFile::~SpdkSequentialFile(void) {
-	spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
+	spdk_file_close(mFile, &g_sync_args.sem);
 }
 
 Status
 SpdkSequentialFile::Read(size_t n, Slice *result, char *scratch) {
 	uint64_t ret;
 
-	ret = spdk_file_cache_read(mFile, scratch, mOffset, n,
-				   &g_sync_args.mutex, &g_sync_args.cond,
-				   g_channel);
+	ret = spdk_file_read(mFile, scratch, mOffset, n, &g_sync_args.sem);
 	mOffset += ret;
 	*result = Slice(scratch, ret);
 	return Status::OK();
@@ -268,17 +260,16 @@ public:
 };
 
 SpdkRandomAccessFile::SpdkRandomAccessFile(const std::string &fname, const EnvOptions& options) {
-	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_fs_open_file(g_fs, fname.c_str(), 0, &g_sync_args.sem);
 }
 
 SpdkRandomAccessFile::~SpdkRandomAccessFile(void) {
-	spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
+	spdk_file_close(mFile, &g_sync_args.sem);
 }
 
 Status
 SpdkRandomAccessFile::Read(uint64_t offset, size_t n, Slice *result, char *scratch) const {
-	spdk_file_cache_read(mFile, scratch, offset, n, &g_sync_args.mutex, &g_sync_args.cond,
-			     g_channel);
+	spdk_file_read(mFile, scratch, offset, n, &g_sync_args.sem);
 	*result = Slice(scratch, n);
 	return Status::OK();
 }
@@ -305,7 +296,7 @@ public:
 
 	virtual void SetIOPriority(Env::IOPriority pri) {
 		if (pri == Env::IO_HIGH) {
-			spdk_file_cache_set_priority(mFile, SPDK_FILE_CACHE_PRIORITY_HIGH);
+			spdk_file_set_priority(mFile, SPDK_FILE_PRIORITY_HIGH);
 		}
 	}
 
@@ -317,8 +308,8 @@ public:
 		return Status::OK();
 	}
 	virtual Status Close() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.mutex, &g_sync_args.cond, g_channel);
-		spdk_file_close(mFile, &g_sync_args.mutex, &g_sync_args.cond);
+		spdk_file_cache_sync(mFile, &g_sync_args.sem);
+		spdk_file_close(mFile, &g_sync_args.sem);
 		mFile = NULL;
 		return Status::OK();
 	}
@@ -327,11 +318,11 @@ public:
 		return Status::OK();
 	}
 	virtual Status Sync() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.mutex, &g_sync_args.cond, g_channel);
+		spdk_file_cache_sync(mFile, &g_sync_args.sem);
 		return Status::OK();
 	}
 	virtual Status Fsync() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.mutex, &g_sync_args.cond, g_channel);
+		spdk_file_cache_sync(mFile, &g_sync_args.sem);
 		return Status::OK();
 	}
 	virtual bool IsSyncThreadSafe() const override {
@@ -359,13 +350,13 @@ public:
 };
 
 SpdkWritableFile::SpdkWritableFile(const std::string &fname, const EnvOptions& options) : mSize(0) {
-	mFile = spdk_file_cache_open(g_fs, fname.c_str(), &g_sync_args.mutex, &g_sync_args.cond);
+	mFile = spdk_fs_open_file(g_fs, fname.c_str(), 0, &g_sync_args.sem);
 	mName = strdup(fname.c_str());
 }
 
 Status
 SpdkWritableFile::Append(const Slice& data) {
-	spdk_file_cache_write(mFile, (void *)data.data(), mSize, data.size(), &g_sync_args.mutex, &g_sync_args.cond, g_channel);
+	spdk_file_write(mFile, (void *)data.data(), mSize, data.size(), &g_sync_args.sem);
 	mSize += data.size();
 
 	return Status::OK();
@@ -520,8 +511,7 @@ public:
 
 void SpdkInitializeThread(void)
 {
-	pthread_mutex_init(&g_sync_args.mutex, NULL);
-	pthread_cond_init(&g_sync_args.cond, NULL);
+	sem_init(&g_sync_args.sem, 0, 0);
 }
 
 static void SpdkStartThreadWrapper(void* arg) {
@@ -545,7 +535,6 @@ fs_init_cb(void *ctx, struct spdk_filesystem *fs, int fserrno)
 	assert(fserrno == 0);
 
 	g_fs = fs;
-	g_channel = spdk_fs_alloc_io_channel(g_fs, SPDK_IO_PRIORITY_DEFAULT);
 	g_spdk_ready = true;
 }
 
@@ -579,7 +568,6 @@ fs_unload_cb(void *ctx, int fserrno)
 static void
 spdk_rocksdb_shutdown(void)
 {
-	spdk_fs_free_io_channel(g_channel);
 	spdk_fs_unload(g_fs, fs_unload_cb, NULL);
 }
 
@@ -617,8 +605,7 @@ SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache
 	while (!g_spdk_ready)
 		;
 
-	pthread_mutex_init(&g_sync_args.mutex, NULL);
-	pthread_cond_init(&g_sync_args.cond, NULL);
+	SpdkInitializeThread();
 }
 
 SpdkEnv::~SpdkEnv() {
