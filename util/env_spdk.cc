@@ -308,7 +308,7 @@ public:
 		return Status::OK();
 	}
 	virtual Status Close() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.sem);
+		spdk_file_sync(mFile, &g_sync_args.sem);
 		spdk_file_close(mFile, &g_sync_args.sem);
 		mFile = NULL;
 		return Status::OK();
@@ -318,11 +318,11 @@ public:
 		return Status::OK();
 	}
 	virtual Status Sync() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.sem);
+		spdk_file_sync(mFile, &g_sync_args.sem);
 		return Status::OK();
 	}
 	virtual Status Fsync() override {
-		spdk_file_cache_sync(mFile, &g_sync_args.sem);
+		spdk_file_sync(mFile, &g_sync_args.sem);
 		return Status::OK();
 	}
 	virtual bool IsSyncThreadSafe() const override {
