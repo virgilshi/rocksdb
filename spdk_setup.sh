@@ -110,6 +110,7 @@ run_step() {
 
 	if [ "$NO_SPDK" = "1" ]
 	then
+	  echo "--bytes_per_sync=262144" >> "$1"_flags.txt
 	  cat /sys/block/nvme0n1/stat > "$1"_blockdev_stats.txt
 	fi
 
@@ -129,7 +130,10 @@ run_step() {
 	echo done.
 }
 
-run_step insert
+if [ -z "$SKIP_INSERT" ]
+then
+  run_step insert
+fi
 run_step randread
 run_step overwrite
 run_step readwrite

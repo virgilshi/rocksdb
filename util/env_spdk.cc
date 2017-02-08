@@ -103,26 +103,6 @@ __open_file(void *arg1, void *arg2)
 }
 
 static void
-__delete_file_cb(void *arg, int fserrno)
-{
-	struct sync_args *args = (struct sync_args *)arg;
-
-	if (fserrno != 0) {
-		printf("could not delete %d\n", fserrno);
-	}
-	args->rc = fserrno;
-	wake_rocksdb_thread(args);
-}
-
-static void
-__delete_file(void *arg1, void *arg2)
-{
-	struct sync_args *args = (struct sync_args *)arg1;
-
-	spdk_fs_md_delete_file(g_fs, args->new_name, __delete_file_cb, args);
-}
-
-static void
 __rename_file_cb(void *arg, int fserrno)
 {
 	struct sync_args *args = (struct sync_args *)arg;
@@ -471,10 +451,10 @@ public:
 		return Status::OK();
 	}
 	virtual Status DeleteFile(const std::string& fname) override {
+		int rc;
 		std::string fname_base = basename(fname);
-		g_sync_args.new_name = fname_base.c_str();
-		send_fs_event(__delete_file, &g_sync_args);
-		if (g_sync_args.rc == -ENOENT) {
+		rc = spdk_fs_delete_file(g_fs, fname_base.c_str(), &g_sync_args.sem);
+		if (rc == -ENOENT) {
 			return PosixEnv::DeleteFile(fname);
 		}
 		return Status::OK();
