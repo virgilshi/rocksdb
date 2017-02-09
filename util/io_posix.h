@@ -7,7 +7,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #pragma once
+#include <errno.h>
 #include <unistd.h>
+#include <atomic>
+#include <string>
 #include "rocksdb/env.h"
 
 // For non linux platform, the following macros are used only as place
@@ -23,31 +26,41 @@
 namespace rocksdb {
 
 static Status IOError(const std::string& context, int err_number) {
-  return Status::IOError(context, strerror(err_number));
+  return (err_number == ENOSPC) ?
+      Status::NoSpace(context, strerror(err_number)) :
+      Status::IOError(context, strerror(err_number));
 }
+
+class PosixHelper {
+ public:
+  static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size);
+};
 
 class PosixSequentialFile : public SequentialFile {
  private:
   std::string filename_;
   FILE* file_;
   int fd_;
-  bool use_os_buffer_;
+  bool use_direct_io_;
 
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f,
+  PosixSequentialFile(const std::string& fname, FILE* file, int fd,
                       const EnvOptions& options);
   virtual ~PosixSequentialFile();
 
   virtual Status Read(size_t n, Slice* result, char* scratch) override;
+  virtual Status PositionedRead(uint64_t offset, size_t n, Slice* result,
+                                char* scratch) override;
   virtual Status Skip(uint64_t n) override;
   virtual Status InvalidateCache(size_t offset, size_t length) override;
+  virtual bool use_direct_io() const override { return use_direct_io_; }
 };
 
 class PosixRandomAccessFile : public RandomAccessFile {
- private:
+ protected:
   std::string filename_;
   int fd_;
-  bool use_os_buffer_;
+  bool use_direct_io_;
 
  public:
   PosixRandomAccessFile(const std::string& fname, int fd,
@@ -56,16 +69,18 @@ class PosixRandomAccessFile : public RandomAccessFile {
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const override;
-#ifdef OS_LINUX
+#if defined(OS_LINUX) || defined(OS_MACOSX)
   virtual size_t GetUniqueId(char* id, size_t max_size) const override;
 #endif
   virtual void Hint(AccessPattern pattern) override;
   virtual Status InvalidateCache(size_t offset, size_t length) override;
+  virtual bool use_direct_io() const override { return use_direct_io_; }
 };
 
 class PosixWritableFile : public WritableFile {
- private:
+ protected:
   const std::string filename_;
+  const bool use_direct_io_;
   int fd_;
   uint64_t filesize_;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
@@ -74,20 +89,27 @@ class PosixWritableFile : public WritableFile {
 #endif
 
  public:
-  PosixWritableFile(const std::string& fname, int fd,
-                    const EnvOptions& options);
-  ~PosixWritableFile();
+  explicit PosixWritableFile(const std::string& fname, int fd,
+                             const EnvOptions& options);
+  virtual ~PosixWritableFile();
 
   // Means Close() will properly take care of truncate
   // and it does not need any additional information
   virtual Status Truncate(uint64_t size) override { return Status::OK(); }
   virtual Status Close() override;
   virtual Status Append(const Slice& data) override;
+  virtual Status PositionedAppend(const Slice& data, uint64_t offset) override;
   virtual Status Flush() override;
   virtual Status Sync() override;
   virtual Status Fsync() override;
   virtual bool IsSyncThreadSafe() const override;
+  virtual bool use_direct_io() const override { return use_direct_io_; }
   virtual uint64_t GetFileSize() override;
+  virtual size_t GetRequiredBufferAlignment() const override {
+    // TODO(gzh): It should be the logical sector size/filesystem block size
+    // hardcoded as 4k for most cases
+    return 4 * 1024;
+  }
   virtual Status InvalidateCache(size_t offset, size_t length) override;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   virtual Status Allocate(uint64_t offset, uint64_t len) override;
@@ -96,6 +118,7 @@ class PosixWritableFile : public WritableFile {
 #endif
 };
 
+// mmap() based random-access
 class PosixMmapReadableFile : public RandomAccessFile {
  private:
   int fd_;
@@ -159,6 +182,27 @@ class PosixMmapFile : public WritableFile {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   virtual Status Allocate(uint64_t offset, uint64_t len) override;
 #endif
+};
+
+class PosixRandomRWFile : public RandomRWFile {
+ public:
+  explicit PosixRandomRWFile(const std::string& fname, int fd,
+                             const EnvOptions& options);
+  virtual ~PosixRandomRWFile();
+
+  virtual Status Write(uint64_t offset, const Slice& data) override;
+
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
+                      char* scratch) const override;
+
+  virtual Status Flush() override;
+  virtual Status Sync() override;
+  virtual Status Fsync() override;
+  virtual Status Close() override;
+
+ private:
+  const std::string filename_;
+  int fd_;
 };
 
 class PosixDirectory : public Directory {

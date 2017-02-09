@@ -119,7 +119,7 @@ TEST_F(EventListenerTest, OnSingleDBCompactionTest) {
   options.max_bytes_for_level_base = options.target_file_size_base * 2;
   options.max_bytes_for_level_multiplier = 2;
   options.compression = kNoCompression;
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
   options.enable_thread_tracking = true;
 #endif  // ROCKSDB_USING_THREAD_STATUS
   options.level0_file_num_compaction_trigger = kNumL0Files;
@@ -176,7 +176,7 @@ class TestFlushListener : public EventListener {
     ASSERT_GT(info.table_properties.num_data_blocks, 0U);
     ASSERT_GT(info.table_properties.num_entries, 0U);
 
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
     // Verify the id of the current thread that created this table
     // file matches the id of any active flush or compaction thread.
     uint64_t thread_id = env_->GetThreadID();
@@ -232,7 +232,7 @@ class TestFlushListener : public EventListener {
 TEST_F(EventListenerTest, OnSingleDBFlushTest) {
   Options options;
   options.write_buffer_size = k110KB;
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
   options.enable_thread_tracking = true;
 #endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
@@ -268,7 +268,7 @@ TEST_F(EventListenerTest, OnSingleDBFlushTest) {
 TEST_F(EventListenerTest, MultiCF) {
   Options options;
   options.write_buffer_size = k110KB;
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
   options.enable_thread_tracking = true;
 #endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
@@ -302,7 +302,7 @@ TEST_F(EventListenerTest, MultiCF) {
 
 TEST_F(EventListenerTest, MultiDBMultiListeners) {
   Options options;
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
   options.enable_thread_tracking = true;
 #endif  // ROCKSDB_USING_THREAD_STATUS
   options.table_properties_collector_factories.push_back(
@@ -384,7 +384,7 @@ TEST_F(EventListenerTest, MultiDBMultiListeners) {
 
 TEST_F(EventListenerTest, DisableBGCompaction) {
   Options options;
-#if ROCKSDB_USING_THREAD_STATUS
+#ifdef ROCKSDB_USING_THREAD_STATUS
   options.enable_thread_tracking = true;
 #endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
@@ -723,6 +723,73 @@ TEST_F(EventListenerTest, TableFileCreationListenersTest) {
   dbfull()->TEST_WaitForCompact();
   listener->CheckAndResetCounters(1, 1, 0, 1, 1, 1);
 }
+
+class MemTableSealedListener : public EventListener {
+private:
+  SequenceNumber latest_seq_number_;
+public:
+  MemTableSealedListener() {}
+  void OnMemTableSealed(const MemTableInfo& info) override {
+    latest_seq_number_ = info.first_seqno;
+  }
+
+  void OnFlushCompleted(DB* /*db*/,
+    const FlushJobInfo& flush_job_info) override {
+    ASSERT_LE(flush_job_info.smallest_seqno, latest_seq_number_);
+  }
+};
+
+TEST_F(EventListenerTest, MemTableSealedListenerTest) {
+  auto listener = std::make_shared<MemTableSealedListener>();
+  Options options;
+  options.create_if_missing = true;
+  options.listeners.push_back(listener);
+  DestroyAndReopen(options);
+
+  for (unsigned int i = 0; i < 10; i++) {
+    std::string tag = std::to_string(i);
+    ASSERT_OK(Put("foo"+tag, "aaa"));
+    ASSERT_OK(Put("bar"+tag, "bbb"));
+
+    ASSERT_OK(Flush());
+  }
+}
+
+class ColumnFamilyHandleDeletionStartedListener : public EventListener {
+ private:
+  std::vector<std::string> cfs_;
+  int counter;
+
+ public:
+  explicit ColumnFamilyHandleDeletionStartedListener(
+      const std::vector<std::string>& cfs)
+      : cfs_(cfs), counter(0) {
+    cfs_.insert(cfs_.begin(), kDefaultColumnFamilyName);
+  }
+  void OnColumnFamilyHandleDeletionStarted(
+      ColumnFamilyHandle* handle) override {
+    ASSERT_EQ(cfs_[handle->GetID()], handle->GetName());
+    counter++;
+  }
+  int getCounter() { return counter; }
+};
+
+TEST_F(EventListenerTest, ColumnFamilyHandleDeletionStartedListenerTest) {
+  std::vector<std::string> cfs{"pikachu", "eevee", "Mewtwo"};
+  auto listener =
+      std::make_shared<ColumnFamilyHandleDeletionStartedListener>(cfs);
+  Options options;
+  options.create_if_missing = true;
+  options.listeners.push_back(listener);
+  CreateAndReopenWithCF(cfs, options);
+  ASSERT_EQ(handles_.size(), 4);
+  delete handles_[3];
+  delete handles_[2];
+  delete handles_[1];
+  handles_.resize(1);
+  ASSERT_EQ(listener->getCounter(), 3);
+}
+
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE

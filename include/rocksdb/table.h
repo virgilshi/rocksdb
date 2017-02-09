@@ -20,8 +20,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "rocksdb/cache.h"
 #include "rocksdb/env.h"
-#include "rocksdb/immutable_options.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/options.h"
 #include "rocksdb/status.h"
@@ -65,6 +65,12 @@ struct BlockBasedTableOptions {
   // block during table initialization.
   bool cache_index_and_filter_blocks = false;
 
+  // If cache_index_and_filter_blocks is enabled, cache index and filter
+  // blocks with high priority. If set to true, depending on implementation of
+  // block cache, index and filter blocks may be less likely to be eviected
+  // than data blocks.
+  bool cache_index_and_filter_blocks_with_high_priority = false;
+
   // if cache_index_and_filter_blocks is true and the below is true, then
   // filter and index blocks are stored in the cache, but a reference is
   // held in the "table reader" object so the blocks are pinned and only
@@ -84,10 +90,8 @@ struct BlockBasedTableOptions {
 
   IndexType index_type = kBinarySearch;
 
-  // Influence the behavior when kHashSearch is used.
-  // if false, stores a precise prefix to block range mapping
-  // if true, does not store prefix and allows prefix hash collision
-  // (less memory consumption)
+  // This option is now deprecated. No matter what value it is set to,
+  // it will behave as if hash_index_allow_collision=true.
   bool hash_index_allow_collision = true;
 
   // Use the specified checksum type. Newly created table files will be
@@ -153,15 +157,43 @@ struct BlockBasedTableOptions {
   // a SstTable. Instead, buffer in WritableFileWriter will take
   // care of the flushing when it is full.
   //
-  // On Windows, this option helps a lot when unbuffered I/O
-  // (allow_os_buffer = false) is used, since it avoids small
-  // unbuffered disk write.
+  // This option helps a lot when direct I/O writes
+  // (use_direct_writes = true) is used, since it avoids small
+  // direct disk write.
   //
   // User may also adjust writable_file_max_buffer_size to optimize disk I/O
   // size.
   //
   // Default: false
   bool skip_table_builder_flush = false;
+
+  // Verify that decompressing the compressed block gives back the input. This
+  // is a verification mode that we use to detect bugs in compression
+  // algorithms.
+  bool verify_compression = false;
+
+  // If used, For every data block we load into memory, we will create a bitmap
+  // of size ((block_size / `read_amp_bytes_per_bit`) / 8) bytes. This bitmap
+  // will be used to figure out the percentage we actually read of the blocks.
+  //
+  // When this feature is used Tickers::READ_AMP_ESTIMATE_USEFUL_BYTES and
+  // Tickers::READ_AMP_TOTAL_READ_BYTES can be used to calculate the
+  // read amplification using this formula
+  // (READ_AMP_TOTAL_READ_BYTES / READ_AMP_ESTIMATE_USEFUL_BYTES)
+  //
+  // value  =>  memory usage (percentage of loaded blocks memory)
+  // 1      =>  12.50 %
+  // 2      =>  06.25 %
+  // 4      =>  03.12 %
+  // 8      =>  01.56 %
+  // 16     =>  00.78 %
+  //
+  // Note: This number must be a power of 2, if not it will be sanitized
+  // to be the next lowest power of 2, for example a value of 7 will be
+  // treated as 4, a value of 19 will be treated as 16.
+  //
+  // Default: 0 (disabled)
+  uint32_t read_amp_bytes_per_bit = 0;
 
   // We currently have three versions:
   // 0 -- This version is currently written out by all RocksDB's versions by
@@ -215,7 +247,6 @@ enum EncodingType : char {
 
 // Table Properties that are specific to plain table properties.
 struct PlainTablePropertyNames {
-  static const std::string kPrefixExtractorName;
   static const std::string kEncodingType;
   static const std::string kBloomVersion;
   static const std::string kNumBloomBlocks;
@@ -387,7 +418,8 @@ class TableFactory {
   virtual Status NewTableReader(
       const TableReaderOptions& table_reader_options,
       unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-      unique_ptr<TableReader>* table_reader) const = 0;
+      unique_ptr<TableReader>* table_reader,
+      bool prefetch_index_and_filter_in_cache = true) const = 0;
 
   // Return a table builder to write to a file for this table type.
   //
@@ -402,7 +434,6 @@ class TableFactory {
   // (4) When running Repairer, it creates a table builder to convert logs to
   //     SST files (In Repairer::ConvertLogToTable() by calling BuildTable())
   //
-  // ImmutableCFOptions is a subset of Options that can not be altered.
   // Multiple configured can be acceseed from there, including and not limited
   // to compression options. file is a handle of a writable file.
   // It is the caller's responsibility to keep the file open and close the file

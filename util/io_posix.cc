@@ -12,6 +12,7 @@
 #include "util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <algorithm>
 #if defined(OS_LINUX)
 #include <linux/fs.h>
 #endif
@@ -47,18 +48,51 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 }
 
 /*
+ * DirectIOHelper
+ */
+#ifndef NDEBUG
+namespace {
+const size_t kSectorSize = 512;
+#ifdef OS_LINUX
+const size_t kPageSize = sysconf(_SC_PAGESIZE);
+#else
+const size_t kPageSize = 4 * 1024;
+#endif
+
+
+bool IsSectorAligned(const size_t off) { return off % kSectorSize == 0; }
+
+static bool IsPageAligned(const void* ptr) {
+  return uintptr_t(ptr) % (kPageSize) == 0;
+}
+
+}
+#endif
+
+/*
  * PosixSequentialFile
  */
-PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
-                                         const EnvOptions& options)
+PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* file,
+                                         int fd, const EnvOptions& options)
     : filename_(fname),
-      file_(f),
-      fd_(fileno(f)),
-      use_os_buffer_(options.use_os_buffer) {}
+      file_(file),
+      fd_(fd),
+      use_direct_io_(options.use_direct_reads) {
+  assert(!options.use_direct_reads || !options.use_mmap_reads);
+}
 
-PosixSequentialFile::~PosixSequentialFile() { fclose(file_); }
+PosixSequentialFile::~PosixSequentialFile() {
+  if (!use_direct_io()) {
+    assert(file_);
+    fclose(file_);
+  } else {
+    assert(fd_);
+    close(fd_);
+  }
+}
 
 Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
+  assert(result != nullptr && !use_direct_io());
   Status s;
   size_t r = 0;
   do {
@@ -76,11 +110,41 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
       s = IOError(filename_, errno);
     }
   }
-  if (!use_os_buffer_) {
-    // we need to fadvise away the entire range of pages because
-    // we do not want readahead pages to be cached.
-    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
+  // we need to fadvise away the entire range of pages because
+  // we do not want readahead pages to be cached under buffered io
+  Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
+  return s;
+}
+
+Status PosixSequentialFile::PositionedRead(uint64_t offset, size_t n,
+                                           Slice* result, char* scratch) {
+  Status s;
+  ssize_t r = -1;
+  size_t left = n;
+  char* ptr = scratch;
+  assert(use_direct_io());
+  while (left > 0) {
+    r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+    if (r <= 0) {
+      if (r == -1 && errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    ptr += r;
+    offset += r;
+    left -= r;
+    if (r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
+      // Bytes reads don't fill sectors. Should only happen at the end
+      // of the file.
+      break;
+    }
   }
+  if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(filename_, errno);
+  }
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
   return s;
 }
 
@@ -95,24 +159,29 @@ Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
 #ifndef OS_LINUX
   return Status::OK();
 #else
-  // free OS pages
-  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
-  if (ret == 0) {
-    return Status::OK();
+  if (!use_direct_io()) {
+    // free OS pages
+    int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
+    if (ret != 0) {
+      return IOError(filename_, errno);
+    }
   }
-  return IOError(filename_, errno);
+  return Status::OK();
 #endif
 }
 
+/*
+ * PosixRandomAccessFile
+ */
 #if defined(OS_LINUX)
-namespace {
-static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
+size_t PosixHelper::GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   if (max_size < kMaxVarint64Length * 3) {
     return 0;
   }
 
   struct stat buf;
   int result = fstat(fd, &buf);
+  assert(result != -1);
   if (result == -1) {
     return 0;
   }
@@ -132,9 +201,28 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   assert(rid >= id);
   return static_cast<size_t>(rid - id);
 }
-}
 #endif
 
+#if defined(OS_MACOSX)
+size_t PosixHelper::GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
+  if (max_size < kMaxVarint64Length * 3) {
+    return 0;
+  }
+
+  struct stat buf;
+  int result = fstat(fd, &buf);
+  if (result == -1) {
+    return 0;
+  }
+
+  char* rid = id;
+  rid = EncodeVarint64(rid, buf.st_dev);
+  rid = EncodeVarint64(rid, buf.st_ino);
+  rid = EncodeVarint64(rid, buf.st_gen);
+  assert(rid >= id);
+  return static_cast<size_t>(rid - id);
+}
+#endif
 /*
  * PosixRandomAccessFile
  *
@@ -142,7 +230,8 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
  */
 PosixRandomAccessFile::PosixRandomAccessFile(const std::string& fname, int fd,
                                              const EnvOptions& options)
-    : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer) {
+    : filename_(fname), fd_(fd), use_direct_io_(options.use_direct_reads) {
+  assert(!options.use_direct_reads || !options.use_mmap_reads);
   assert(!options.use_mmap_reads || sizeof(void*) < 8);
 }
 
@@ -156,9 +245,8 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   char* ptr = scratch;
   while (left > 0) {
     r = pread(fd_, ptr, left, static_cast<off_t>(offset));
-
     if (r <= 0) {
-      if (errno == EINTR) {
+      if (r == -1 && errno == EINTR) {
         continue;
       }
       break;
@@ -166,28 +254,31 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     ptr += r;
     offset += r;
     left -= r;
+    if (use_direct_io() &&
+        r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
+      // Bytes reads don't fill sectors. Should only happen at the end
+      // of the file.
+      break;
+    }
   }
-
-  *result = Slice(scratch, (r < 0) ? 0 : n - left);
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(filename_, errno);
   }
-  if (!use_os_buffer_) {
-    // we need to fadvise away the entire range of pages because
-    // we do not want readahead pages to be cached.
-    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
-  }
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
   return s;
 }
 
-#ifdef OS_LINUX
+#if defined(OS_LINUX) || defined(OS_MACOSX)
 size_t PosixRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(fd_, id, max_size);
+  return PosixHelper::GetUniqueIdFromFile(fd_, id, max_size);
 }
 #endif
 
 void PosixRandomAccessFile::Hint(AccessPattern pattern) {
+  if (use_direct_io()) {
+    return;
+  }
   switch (pattern) {
     case NORMAL:
       Fadvise(fd_, 0, 0, POSIX_FADV_NORMAL);
@@ -211,6 +302,9 @@ void PosixRandomAccessFile::Hint(AccessPattern pattern) {
 }
 
 Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
+  if (use_direct_io()) {
+    return Status::OK();
+  }
 #ifndef OS_LINUX
   return Status::OK();
 #else
@@ -236,7 +330,7 @@ PosixMmapReadableFile::PosixMmapReadableFile(const int fd,
     : fd_(fd), filename_(fname), mmapped_region_(base), length_(length) {
   fd_ = fd_ + 0;  // suppress the warning for used variables
   assert(options.use_mmap_reads);
-  assert(options.use_os_buffer);
+  assert(!options.use_direct_reads);
 }
 
 PosixMmapReadableFile::~PosixMmapReadableFile() {
@@ -305,7 +399,6 @@ Status PosixMmapFile::UnmapCurrentRegion() {
 Status PosixMmapFile::MapNewRegion() {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   assert(base_ == nullptr);
-
   TEST_KILL_RANDOM("PosixMmapFile::UnmapCurrentRegion:0", rocksdb_kill_odds);
   // we can't fallocate with FALLOC_FL_KEEP_SIZE here
   if (allow_fallocate_) {
@@ -372,6 +465,7 @@ PosixMmapFile::PosixMmapFile(const std::string& fname, int fd, size_t page_size,
 #endif
   assert((page_size & (page_size - 1)) == 0);
   assert(options.use_mmap_writes);
+  assert(!options.use_direct_writes);
 }
 
 PosixMmapFile::~PosixMmapFile() {
@@ -504,7 +598,10 @@ Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
  */
 PosixWritableFile::PosixWritableFile(const std::string& fname, int fd,
                                      const EnvOptions& options)
-    : filename_(fname), fd_(fd), filesize_(0) {
+    : filename_(fname),
+      use_direct_io_(options.use_direct_writes),
+      fd_(fd),
+      filesize_(0) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   allow_fallocate_ = options.allow_fallocate;
   fallocate_with_keep_size_ = options.fallocate_with_keep_size;
@@ -519,6 +616,7 @@ PosixWritableFile::~PosixWritableFile() {
 }
 
 Status PosixWritableFile::Append(const Slice& data) {
+  assert(!use_direct_io() || (IsSectorAligned(data.size()) && IsPageAligned(data.data())));
   const char* src = data.data();
   size_t left = data.size();
   while (left != 0) {
@@ -536,6 +634,28 @@ Status PosixWritableFile::Append(const Slice& data) {
   return Status::OK();
 }
 
+Status PosixWritableFile::PositionedAppend(const Slice& data, uint64_t offset) {
+  assert(use_direct_io() && IsSectorAligned(offset) &&
+         IsSectorAligned(data.size()) && IsPageAligned(data.data()));
+  assert(offset <= std::numeric_limits<off_t>::max());
+  const char* src = data.data();
+  size_t left = data.size();
+  while (left != 0) {
+    ssize_t done = pwrite(fd_, src, left, static_cast<off_t>(offset));
+    if (done < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return IOError(filename_, errno);
+    }
+    left -= done;
+    offset += done;
+    src += done;
+  }
+  filesize_ = offset;
+  return Status::OK();
+}
+
 Status PosixWritableFile::Close() {
   Status s;
 
@@ -548,7 +668,7 @@ Status PosixWritableFile::Close() {
     // but it will be nice to log these errors.
     int dummy __attribute__((unused));
     dummy = ftruncate(fd_, filesize_);
-#ifdef ROCKSDB_FALLOCATE_PRESENT
+#if defined(ROCKSDB_FALLOCATE_PRESENT) && !defined(TRAVIS)
     // in some file systems, ftruncate only trims trailing space if the
     // new file size is smaller than the current size. Calling fallocate
     // with FALLOC_FL_PUNCH_HOLE flag to explicitly release these unused
@@ -560,6 +680,11 @@ Status PosixWritableFile::Close() {
     //   tmpfs (since Linux 3.5)
     // We ignore error since failure of this operation does not affect
     // correctness.
+    // TRAVIS - this code does not work on TRAVIS filesystems.
+    // the FALLOC_FL_KEEP_SIZE option is expected to not change the size
+    // of the file, but it does. Simple strace report will show that.
+    // While we work with Travis-CI team to figure out if this is a
+    // quirk of Docker/AUFS, we will comment this out.
     IOSTATS_TIMER_GUARD(allocate_nanos);
     if (allow_fallocate_) {
       fallocate(fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
@@ -597,6 +722,9 @@ bool PosixWritableFile::IsSyncThreadSafe() const { return true; }
 uint64_t PosixWritableFile::GetFileSize() { return filesize_; }
 
 Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
+  if (use_direct_io()) {
+    return Status::OK();
+  }
 #ifndef OS_LINUX
   return Status::OK();
 #else
@@ -640,9 +768,102 @@ Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
 }
 
 size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(fd_, id, max_size);
+  return PosixHelper::GetUniqueIdFromFile(fd_, id, max_size);
 }
 #endif
+
+/*
+ * PosixRandomRWFile
+ */
+
+PosixRandomRWFile::PosixRandomRWFile(const std::string& fname, int fd,
+                                     const EnvOptions& options)
+    : filename_(fname), fd_(fd) {}
+
+PosixRandomRWFile::~PosixRandomRWFile() {
+  if (fd_ >= 0) {
+    Close();
+  }
+}
+
+Status PosixRandomRWFile::Write(uint64_t offset, const Slice& data) {
+  const char* src = data.data();
+  size_t left = data.size();
+  while (left != 0) {
+    ssize_t done = pwrite(fd_, src, left, offset);
+    if (done < 0) {
+      // error while writing to file
+      if (errno == EINTR) {
+        // write was interrupted, try again.
+        continue;
+      }
+      return IOError(filename_, errno);
+    }
+
+    // Wrote `done` bytes
+    left -= done;
+    offset += done;
+    src += done;
+  }
+
+  return Status::OK();
+}
+
+Status PosixRandomRWFile::Read(uint64_t offset, size_t n, Slice* result,
+                               char* scratch) const {
+  size_t left = n;
+  char* ptr = scratch;
+  while (left > 0) {
+    ssize_t done = pread(fd_, ptr, left, offset);
+    if (done < 0) {
+      // error while reading from file
+      if (errno == EINTR) {
+        // read was interrupted, try again.
+        continue;
+      }
+      return IOError(filename_, errno);
+    } else if (done == 0) {
+      // Nothing more to read
+      break;
+    }
+
+    // Read `done` bytes
+    ptr += done;
+    offset += done;
+    left -= done;
+  }
+
+  *result = Slice(scratch, n - left);
+  return Status::OK();
+}
+
+Status PosixRandomRWFile::Flush() { return Status::OK(); }
+
+Status PosixRandomRWFile::Sync() {
+  if (fdatasync(fd_) < 0) {
+    return IOError(filename_, errno);
+  }
+  return Status::OK();
+}
+
+Status PosixRandomRWFile::Fsync() {
+  if (fsync(fd_) < 0) {
+    return IOError(filename_, errno);
+  }
+  return Status::OK();
+}
+
+Status PosixRandomRWFile::Close() {
+  if (close(fd_) < 0) {
+    return IOError(filename_, errno);
+  }
+  fd_ = -1;
+  return Status::OK();
+}
+
+/*
+ * PosixDirectory
+ */
 
 PosixDirectory::~PosixDirectory() { close(fd_); }
 

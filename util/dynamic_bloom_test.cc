@@ -15,13 +15,14 @@ int main() {
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <gflags/gflags.h>
 #include <inttypes.h>
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <vector>
-#include <gflags/gflags.h>
 
 #include "dynamic_bloom.h"
 #include "port/port.h"
@@ -201,6 +202,7 @@ TEST_F(DynamicBloomTest, perf) {
     }
     ASSERT_EQ(count, num_keys);
     elapsed = timer.ElapsedNanos();
+    assert(count > 0);
     fprintf(stderr, "standard bloom, avg query latency %" PRIu64 "\n",
             elapsed / count);
 
@@ -227,6 +229,7 @@ TEST_F(DynamicBloomTest, perf) {
     }
 
     elapsed = timer.ElapsedNanos();
+    assert(count > 0);
     fprintf(stderr,
             "blocked bloom(enable locality), avg query latency %" PRIu64 "\n",
             elapsed / count);

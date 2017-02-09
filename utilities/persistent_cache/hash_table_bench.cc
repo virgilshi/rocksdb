@@ -4,17 +4,21 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
 
+#if !defined(OS_WIN) && !defined(ROCKSDB_LITE)
+
+#ifndef GFLAGS
+#include <cstdio>
+int main() { fprintf(stderr, "Please install gflags to run tools\n"); }
+#else
 #include <gflags/gflags.h>
-#include <sys/time.h>
-#include <unistd.h>
 
 #include <atomic>
 #include <functional>
 #include <string>
 #include <unordered_map>
 
-#include "include/rocksdb/env.h"
 #include "port/port_posix.h"
+#include "rocksdb/env.h"
 #include "util/mutexlock.h"
 #include "utilities/persistent_cache/hash_table.h"
 
@@ -100,9 +104,10 @@ class HashTableBenchmark {
   }
 
   void RunRead() {
+    Random64 rgen(time(nullptr));
     while (!quit_) {
       std::string s;
-      size_t k = random() % max_prepop_key;
+      size_t k = rgen.Next() % max_prepop_key;
       bool status = impl_->Lookup(k, &s);
       assert(status);
       assert(s == std::string(1000, k % 255));
@@ -267,9 +272,9 @@ class GranularLockImpl : public HashTableImpl<size_t, string> {
 // main
 //
 int main(int argc, char** argv) {
-  google::SetUsageMessage(std::string("\nUSAGE:\n") + std::string(argv[0]) +
+  GFLAGS::SetUsageMessage(std::string("\nUSAGE:\n") + std::string(argv[0]) +
                           " [OPTIONS]...");
-  google::ParseCommandLineFlags(&argc, &argv, false);
+  GFLAGS::ParseCommandLineFlags(&argc, &argv, false);
 
   //
   // Micro benchmark unordered_map
@@ -292,3 +297,7 @@ int main(int argc, char** argv) {
 
   return 0;
 }
+#endif  // #ifndef GFLAGS
+#else
+int main(int /*argc*/, char** /*argv*/) { return 0; }
+#endif

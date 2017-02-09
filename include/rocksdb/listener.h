@@ -18,9 +18,10 @@ typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
 class DB;
+class ColumnFamilyHandle;
 class Status;
 struct CompactionJobStats;
-enum CompressionType : char;
+enum CompressionType : unsigned char;
 
 enum class TableFileCreationReason {
   kFlush,
@@ -151,6 +152,38 @@ struct CompactionJobInfo {
   CompactionJobStats stats;
 };
 
+struct MemTableInfo {
+  // the name of the column family to which memtable belongs
+  std::string cf_name;
+  // Sequence number of the first element that was inserted
+  // into the memtable.
+  SequenceNumber first_seqno;
+  // Sequence number that is guaranteed to be smaller than or equal
+  // to the sequence number of any key that could be inserted into this
+  // memtable. It can then be assumed that any write with a larger(or equal)
+  // sequence number will be present in this memtable or a later memtable.
+  SequenceNumber earliest_seqno;
+  // Total number of entries in memtable
+  uint64_t num_entries;
+  // Total number of deletes in memtable
+  uint64_t num_deletes;
+
+};
+
+struct ExternalFileIngestionInfo {
+  // the name of the column family
+  std::string cf_name;
+  // Path of the file outside the DB
+  std::string external_file_path;
+  // Path of the file inside the DB
+  std::string internal_file_path;
+  // The global sequence number assigned to keys in this file
+  SequenceNumber global_seqno;
+  // Table properties of the table being flushed
+  TableProperties table_properties;
+};
+
+
 // EventListener class contains a set of call-back functions that will
 // be called when specific RocksDB event happens such as flush.  It can
 // be used as a building block for developing custom features such as
@@ -247,6 +280,39 @@ class EventListener {
   // returned value.
   virtual void OnTableFileCreationStarted(
       const TableFileCreationBriefInfo& /*info*/) {}
+
+  // A call-back function for RocksDB which will be called before
+  // a memtable is made immutable.
+  //
+  // Note that the this function must be implemented in a way such that
+  // it should not run for an extended period of time before the function
+  // returns.  Otherwise, RocksDB may be blocked.
+  //
+  // Note that if applications would like to use the passed reference
+  // outside this function call, they should make copies from these
+  // returned value.
+  virtual void OnMemTableSealed(
+    const MemTableInfo& /*info*/) {}
+
+  // A call-back function for RocksDB which will be called before
+  // a column family handle is deleted.
+  //
+  // Note that the this function must be implemented in a way such that
+  // it should not run for an extended period of time before the function
+  // returns.  Otherwise, RocksDB may be blocked.
+  // @param handle is a pointer to the column family handle to be deleted
+  // which will become a dangling pointer after the deletion.
+  virtual void OnColumnFamilyHandleDeletionStarted(ColumnFamilyHandle* handle) {
+  }
+
+  // A call-back function for RocksDB which will be called after an external
+  // file is ingested using IngestExternalFile.
+  //
+  // Note that the this function will run on the same thread as
+  // IngestExternalFile(), if this function is blocked, IngestExternalFile()
+  // will be blocked from finishing.
+  virtual void OnExternalFileIngested(
+      DB* /*db*/, const ExternalFileIngestionInfo& /*info*/) {}
 
   virtual ~EventListener() {}
 };

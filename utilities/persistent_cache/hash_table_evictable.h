@@ -5,6 +5,11 @@
 //
 #pragma once
 
+#ifndef ROCKSDB_LITE
+
+#include <functional>
+
+#include "util/random.h"
 #include "utilities/persistent_cache/hash_table.h"
 #include "utilities/persistent_cache/lrulist.h"
 
@@ -61,7 +66,7 @@ class EvictableHashTable : private HashTable<T*, Hash, Equal> {
     port::RWMutex& lock = GetMutex(h);
 
     ReadLock _(&lock);
-    if (hash_table::Find(bucket, t, ret)) {
+    if (hash_table::Find(&bucket, t, ret)) {
       ++(*ret)->refs_;
       lru.Touch(*ret);
       return true;
@@ -73,7 +78,8 @@ class EvictableHashTable : private HashTable<T*, Hash, Equal> {
   // Evict one of the least recently used object
   //
   T* Evict(const std::function<void(T*)>& fn = nullptr) {
-    const size_t start_idx = random() % hash_table::nlocks_;
+    uint32_t random = Random::GetTLSInstance()->Next();
+    const size_t start_idx = random % hash_table::nlocks_;
     T* t = nullptr;
 
     // iterate from start_idx .. 0 .. start_idx
@@ -158,3 +164,5 @@ class EvictableHashTable : private HashTable<T*, Hash, Equal> {
 };
 
 }  // namespace rocksdb
+
+#endif

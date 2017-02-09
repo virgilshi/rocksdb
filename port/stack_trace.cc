@@ -6,7 +6,7 @@
 #include "port/stack_trace.h"
 
 #if defined(ROCKSDB_LITE) || !(defined(ROCKSDB_BACKTRACE) || defined(OS_MACOSX)) || \
-    defined(CYGWIN)
+    defined(CYGWIN) || defined(OS_FREEBSD)
 
 // noop
 
@@ -110,6 +110,7 @@ void PrintStack(int first_frames_to_skip) {
     fprintf(stderr, "#%-2d  ", i - first_frames_to_skip);
     PrintStackTraceLine((symbols != nullptr) ? symbols[i] : nullptr, frames[i]);
   }
+  free(symbols);
 }
 
 static void StackTraceHandler(int sig) {
