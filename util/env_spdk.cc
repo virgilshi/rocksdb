@@ -16,6 +16,7 @@ namespace rocksdb {
 
 struct spdk_filesystem *g_fs;
 struct spdk_bs_dev *g_bs_dev;
+std::string g_bdev_name;
 volatile bool g_spdk_ready = false;
 struct sync_args {
 	sem_t sem;
@@ -356,9 +357,11 @@ private:
 	pthread_t mSpdkTid;
 	std::string mDirectory;
 	std::string mConfig;
+	std::string mBdev;
 
 public:
-	SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache_size_in_mb);
+	SpdkEnv(const std::string &dir, const std::string &conf,
+		const std::string &bdev, uint64_t cache_size_in_mb);
 
 	virtual ~SpdkEnv();
 
@@ -524,10 +527,10 @@ spdk_rocksdb_run(void *arg1, void *arg2)
 	struct spdk_bdev *bdev;
 
 	pthread_setname_np(pthread_self(), "spdk");
-	bdev = spdk_bdev_first();
+	bdev = spdk_bdev_get_by_name(g_bdev_name.c_str());
 
 	if (bdev == NULL) {
-		printf("no bdevs found\n");
+		printf("bdev %s not found\n", g_bdev_name.c_str());
 		exit(1);
 	}
 
@@ -568,8 +571,9 @@ initialize_spdk(void *arg)
 	pthread_exit(NULL);
 }
 
-SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache_size_in_mb)
-    : PosixEnv(), mDirectory(dir), mConfig(conf) {
+SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf,
+		 const std::string &bdev, uint64_t cache_size_in_mb)
+    : PosixEnv(), mDirectory(dir), mConfig(conf), mBdev(bdev) {
 	struct spdk_app_opts *opts = new struct spdk_app_opts;
 
 	spdk_app_opts_init(opts);
@@ -580,6 +584,7 @@ SpdkEnv::SpdkEnv(const std::string &dir, const std::string &conf, uint64_t cache
 	opts->shutdown_cb = spdk_rocksdb_shutdown;
 
 	spdk_file_cache_set_size(cache_size_in_mb);
+	g_bdev_name = mBdev;
 
 	pthread_create(&mSpdkTid, NULL, &initialize_spdk, opts);
 	while (!g_spdk_ready)
@@ -593,8 +598,9 @@ SpdkEnv::~SpdkEnv() {
 	pthread_join(mSpdkTid, NULL);
 }
 
-void NewSpdkEnv(Env **env, const std::string& dir, const std::string &conf, uint64_t cache_size_in_mb) {
-	*env = new SpdkEnv(dir, conf, cache_size_in_mb);
+void NewSpdkEnv(Env **env, const std::string& dir, const std::string &conf,
+		const std::string &bdev, uint64_t cache_size_in_mb) {
+	*env = new SpdkEnv(dir, conf, bdev, cache_size_in_mb);
 }
 
 } // namespace rocksdb

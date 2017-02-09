@@ -105,6 +105,7 @@ run_step() {
 	if [ -z "$NO_SPDK" ]
 	then
 	  echo "--spdk=/usr/local/etc/spdk/rocksdb.conf" >> "$1"_flags.txt
+	  echo "--spdk_bdev=Nvme0n1" >> "$1"_flags.txt
 	  echo "--spdk_cache_size=$CACHE_SIZE" >> "$1"_flags.txt
 	fi
 
