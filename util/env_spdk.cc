@@ -323,7 +323,11 @@ public:
 		return Status::OK();
 	}
 	virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override {
-		printf("%s\n", __func__);
+		/*
+		 * SPDK BlobFS does not have a range sync operation yet, so just sync
+		 *  the whole file.
+		 */
+		spdk_file_sync(mFile, &g_sync_args.sem);
 		return Status::OK();
 	}
 	virtual size_t GetUniqueId(char *id, size_t max_size) const override { return 0; }
