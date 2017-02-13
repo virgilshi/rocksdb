@@ -95,6 +95,15 @@ echo "--disable_wal=1" >> readwrite_flags.txt
 echo "--use_existing_db=1" >> readwrite_flags.txt
 echo "--num=$NUM_KEYS" >> readwrite_flags.txt
 
+cp $INITIAL_DIR/common_flags.txt writesync_flags.txt
+echo "--benchmarks=overwrite" >> writesync_flags.txt
+echo "--threads=1" >> writesync_flags.txt
+echo "--duration=$DURATION" >> writesync_flags.txt
+echo "--disable_wal=0" >> writesync_flags.txt
+echo "--use_existing_db=1" >> writesync_flags.txt
+echo "--sync=1" >> writesync_flags.txt
+echo "--num=$NUM_KEYS" >> writesync_flags.txt
+
 run_step() {
 	if [ -z "$1" ]
 	then
@@ -138,6 +147,7 @@ fi
 run_step randread
 run_step overwrite
 run_step readwrite
+run_step writesync
 
 if [ "$NO_SPDK" = "1" ]
 then
