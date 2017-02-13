@@ -564,8 +564,8 @@ initialize_spdk(void *arg)
 	struct spdk_app_opts *opts = (struct spdk_app_opts *)arg;
 
 	rte_set_log_level(RTE_LOG_ERR);
-	spdk_log_set_trace_flag("FILE");
-	spdk_log_set_trace_flag("FILE_CACHE");
+	//spdk_log_set_trace_flag("FILE");
+	//spdk_log_set_trace_flag("FILE_CACHE");
 	spdk_app_init(opts);
 
 	spdk_app_start(spdk_rocksdb_run, NULL, NULL);
