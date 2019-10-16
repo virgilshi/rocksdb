@@ -217,5 +217,5 @@ class FilePrefetchBuffer {
 
 extern Status NewWritableFile(Env* env, const std::string& fname,
                               unique_ptr<WritableFile>* result,
-                              const EnvOptions& options);
+                              const EnvOptions& options, int level = 0);
 }  // namespace rocksdb

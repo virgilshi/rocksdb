@@ -677,10 +677,22 @@ std::unique_ptr<RandomAccessFile> NewReadaheadRandomAccessFile(
   return result;
 }
 
+// bool isSSTable(std::string fname) {
+//   size_t pos = fname.rfind('.');
+//   std::string ext = fname.substr(pos + 1);
+//   return ext == "sst";
+// }
 Status NewWritableFile(Env* env, const std::string& fname,
                        unique_ptr<WritableFile>* result,
-                       const EnvOptions& options) {
-  Status s = env->NewWritableFile(fname, result, options);
+                       const EnvOptions& options, int level) {
+  Status s;
+  int len = fname.size();
+  if (fname[len-3] == 's' && fname[len-2] == 's' && fname[len-1] == 't')
+    s = env->NewWritableFile(fname, result, options, level);
+  else 
+    s = env->NewWritableFile(fname, result, options);
+  // static FILE* f = fopen("/root/sl/writable.log", "w");
+  // fprintf(f, "%s\n", fname.c_str());
   TEST_KILL_RANDOM("NewWritableFile:0", rocksdb_kill_odds * REDUCE_ODDS2);
   return s;
 }

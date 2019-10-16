@@ -174,7 +174,14 @@ class Env {
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) = 0;
-
+  virtual Status NewWritableFile(const std::string& fname,
+                                 unique_ptr<WritableFile>* result,
+                                 const EnvOptions& options, int level) { 
+                                   (void)(fname);
+                                   (void)(result);
+                                   (void)(options);
+                                   (void)(level);
+                                   return Status::OK(); }
   // Create an object that writes to a new file with the specified
   // name.  Deletes any existing file with the same name and creates a
   // new file.  On success, stores a pointer to the new file in
@@ -975,7 +982,7 @@ class EnvWrapper : public Env {
   // Initialize an EnvWrapper that delegates all calls to *t
   explicit EnvWrapper(Env* t) : target_(t) { }
   ~EnvWrapper() override;
-
+  // using Env::NewWritableFile;
   // Return the target to which this Env forwards all calls
   Env* target() const { return target_; }
 
@@ -992,6 +999,10 @@ class EnvWrapper : public Env {
   Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
                          const EnvOptions& options) override {
     return target_->NewWritableFile(f, r, options);
+  }
+  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+                         const EnvOptions& options, int level) override {
+    return target_->NewWritableFile(f, r, options, level);
   }
   Status ReopenWritableFile(const std::string& fname,
                             unique_ptr<WritableFile>* result,
