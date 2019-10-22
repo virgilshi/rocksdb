@@ -687,10 +687,15 @@ Status NewWritableFile(Env* env, const std::string& fname,
                        const EnvOptions& options, int level) {
   Status s;
   int len = fname.size();
-  if (fname[len-3] == 's' && fname[len-2] == 's' && fname[len-1] == 't')
+  if (fname[len-3] == 's' && fname[len-2] == 's' && fname[len-1] == 't') {
+    static FILE* f = fopen("/root/sl/writable.log", "w");
+    fprintf(f, "%s: %d\n", fname.c_str(), level);
+    fflush(f);
     s = env->NewWritableFile(fname, result, options, level);
-  else 
+  } 
+  else {
     s = env->NewWritableFile(fname, result, options);
+  }
   // static FILE* f = fopen("/root/sl/writable.log", "w");
   // fprintf(f, "%s\n", fname.c_str());
   TEST_KILL_RANDOM("NewWritableFile:0", rocksdb_kill_odds * REDUCE_ODDS2);

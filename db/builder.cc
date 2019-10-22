@@ -110,10 +110,10 @@ Status BuildTable(
       TEST_SYNC_POINT_CALLBACK("BuildTable:create_file", &use_direct_writes);
 #endif  // !NDEBUG
       s = NewWritableFile(env, fname, &file, env_options, level);
-      static FILE *f = fopen("/root/sl/builder.log", "w");
-      assert(f != NULL && "openning file occurs error\n");
-      fprintf(f, "%d\n", level);
-      fflush(f);
+      // static FILE *f = fopen("/root/sl/builder.log", "w");
+      // assert(f != NULL && "openning file occurs error\n");
+      // fprintf(f, "%d\n", level);
+      // fflush(f);
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,

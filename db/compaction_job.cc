@@ -1336,10 +1336,10 @@ Status CompactionJob::OpenCompactionOutputFile(
 #endif
   // printf("OpenCompactionOutputFile, level-i: %d", static_cast<int>(sub_compact->compaction->level()));
   Status s = NewWritableFile(env_, fname, &writable_file, env_options_, sub_compact->compaction->start_level());
-  static FILE *f = fopen("/root/sl/compactor.log", "w");
-  assert(f != NULL && "openning file occurs error\n");
-  fprintf(f, "%d\n", sub_compact->compaction->start_level());
-  fflush(f);
+  // static FILE *f = fopen("/root/sl/compactor.log", "w");
+  // assert(f != NULL && "openning file occurs error\n");
+  // fprintf(f, "%d\n", sub_compact->compaction->start_level());
+  // fflush(f);
   if (!s.ok()) {
     ROCKS_LOG_ERROR(
         db_options_.info_log,
